@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from "react";
 import { SidebarNavigationSection } from "../components/SidebarNavigationSection";
+import { X, Info } from "lucide-react";
 
 // --- Types for MongoDB Data ---
 interface InventoryItemData {
   _id: string;
   name: string;
   category: string;
-  minStock: string; // e.g., "15 bottles"
+  minStock: string; 
   currentCount: number;
   unit: string;
 }
@@ -24,13 +25,15 @@ export const InventoryPage: React.FC = () => {
   const [consumables, setConsumables] = useState<InventoryItemData[]>([]);
   const [assets, setAssets] = useState<EquipmentAsset[]>([]);
   const [loading, setLoading] = useState(true);
+  
+  // State for Add Item Modal
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  // State to handle clicking between Consumables and Assets
+  const [activeCategory, setActiveCategory] = useState<"Consumables" | "Assets">("Consumables");
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // const res = await fetch('/api/inventory');
-        // const data = await res.json();
-        // setConsumables(data);
         setLoading(false);
       } catch (error) {
         console.error("Error fetching inventory:", error);
@@ -40,23 +43,19 @@ export const InventoryPage: React.FC = () => {
     fetchData();
   }, []);
 
-  // Helper to check if an item is low stock
   const isLowStock = (item: InventoryItemData) => {
-    // Extracts the first number found in the minStock string
     const minVal = parseInt(item.minStock.replace(/[^0-9]/g, ""));
     return item.currentCount < minVal;
   };
 
-  // Logic for the summary banner
   const lowStockItems = consumables.filter(isLowStock);
   const outOfStockItems = consumables.filter(item => item.currentCount === 0);
 
   return (
-    <div className="flex h-screen bg-[#f4f5f6] overflow-hidden">
+    <div className="flex h-screen bg-[#f4f5f6] overflow-hidden relative">
       <SidebarNavigationSection />
 
       <div className="flex flex-col flex-1 min-w-0 ml-[240px] overflow-y-auto">
-        {/* Header */}
         <header className="flex flex-wrap items-center justify-between px-4 md:px-8 py-6 gap-4">
           <h1 className="[font-family:'Poppins',Helvetica] font-semibold text-[#1f1f1f] text-2xl md:text-[36px]">
             Inventory
@@ -74,7 +73,6 @@ export const InventoryPage: React.FC = () => {
         </header>
 
         <div className="px-4 md:px-8 pb-8">
-          {/* Low Stock Alert Banner */}
           {lowStockItems.length > 0 && (
             <div className="mb-6 flex items-start gap-4 p-4 bg-[#fff5f5] border border-[#feb2b2] rounded-xl animate-in fade-in slide-in-from-top-4 duration-300">
               <div className="p-2 bg-red-100 rounded-lg">
@@ -92,9 +90,7 @@ export const InventoryPage: React.FC = () => {
             </div>
           )}
 
-          {/* Content Grid */}
           <div className="flex flex-col lg:flex-row flex-1 gap-6">
-            {/* Main Inventory Section */}
             <div className="flex-1 lg:flex-[2] bg-white rounded-3xl p-4 md:p-8 border border-[#e8e8e8] shadow-sm min-w-0">
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
                 <h2 className="text-xl md:text-2xl font-semibold text-[#1f1f1f]">Inventory Overview</h2>
@@ -110,7 +106,6 @@ export const InventoryPage: React.FC = () => {
                 </div>
               </div>
 
-              {/* Toggle Tabs */}
               <div className="flex gap-2 mb-6">
                 <button className="px-4 py-1.5 rounded-lg bg-[#0a2e27] text-white text-sm font-medium transition-all">Consumables</button>
                 <button className="px-4 py-1.5 rounded-lg bg-[#d1d1d1] text-[#6b6b6b] text-sm font-medium hover:bg-gray-300 transition-all">Assets</button>
@@ -125,12 +120,14 @@ export const InventoryPage: React.FC = () => {
                   </span>
                   <input className="w-full pl-11 pr-4 py-3 rounded-xl border border-[#e8e8e8] focus:outline-none focus:border-[#0a2e27] transition-colors" placeholder="Search items..." />
                 </div>
-                <button className="bg-[#0a2e27] text-white px-6 py-3 rounded-xl flex items-center justify-center gap-2 font-medium text-sm hover:bg-[#08241f] transition-colors">
+                <button 
+                  onClick={() => setIsModalOpen(true)}
+                  className="bg-[#0a2e27] text-white px-6 py-3 rounded-xl flex items-center justify-center gap-2 font-medium text-sm hover:bg-[#08241f] transition-colors"
+                >
                   <span className="text-lg">+</span> Add Item
                 </button>
               </div>
 
-              {/* Dynamic Items List */}
               <div className="space-y-3">
                 {loading ? (
                   <div className="py-10 text-center text-gray-400 animate-pulse">Loading items...</div>
@@ -181,7 +178,6 @@ export const InventoryPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Right Sidebar Section */}
             <div className="w-full lg:w-[320px] bg-white rounded-3xl p-6 border border-[#e8e8e8] shadow-sm shrink-0">
               <div className="grid grid-cols-4 gap-2 mb-8 border-b pb-6">
                 {[
@@ -212,6 +208,122 @@ export const InventoryPage: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* --- ADD NEW ITEM MODAL --- */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="bg-white w-full max-w-[500px] rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="bg-[#0a2e27] p-6 flex justify-between items-start">
+              <div className="text-white">
+                <h2 className="text-xl font-bold">Add New Item</h2>
+                <p className="text-gray-300 text-xs mt-1">Fill in the details to add an item</p>
+              </div>
+              <button 
+                onClick={() => setIsModalOpen(false)}
+                className="text-white/70 hover:text-white transition-colors"
+              >
+                <X size={24} />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 space-y-4">
+              <div className="space-y-1">
+                <label className="text-sm font-semibold text-gray-700">Item Name <span className="text-red-500">*</span></label>
+                <input 
+                  type="text" 
+                  placeholder="e.g. Magnesium Chalk"
+                  className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0a2e27]/20 focus:border-[#0a2e27]"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-sm font-semibold text-gray-700">Current Quantity</label>
+                  <input 
+                    type="number" 
+                    placeholder="0"
+                    className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0a2e27]/20 focus:border-[#0a2e27]"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-sm font-semibold text-gray-700">Zone / Area</label>
+                  <select className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0a2e27]/20 focus:border-[#0a2e27] bg-white text-black text-sm">
+                    <option value="">Select zone</option>
+                    <option value="mezzanine">Mezzanine</option>
+                    <option value="powerlifting-area">Powerlifting Area</option>
+                    <option value="open-wod-area">Open WOD Area</option>
+                    <option value="crossfit-area">CrossFit Area</option>
+                    <option value="cafe">Café</option>
+                    <option value="general-storage">General Storage Room</option>
+                    <option value="maintenance-storage">Maintenance & Asset Storage Room</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-sm font-semibold text-gray-700">Minimum Quantity</label>
+                <input 
+                  type="number" 
+                  placeholder="10"
+                  className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0a2e27]/20 focus:border-[#0a2e27]"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-sm font-semibold text-gray-700">Category <span className="text-red-500">*</span></label>
+                <div className="grid grid-cols-2 gap-2 mt-1">
+                  <button 
+                    onClick={() => setActiveCategory("Consumables")}
+                    className={`py-2 rounded-lg font-medium text-sm transition-colors ${
+                      activeCategory === "Consumables" 
+                      ? "bg-[#0a2e27] text-white" 
+                      : "bg-white border border-gray-200 text-gray-600 hover:bg-gray-50"
+                    }`}
+                  >
+                    Consumables
+                  </button>
+                  <button 
+                    onClick={() => setActiveCategory("Assets")}
+                    className={`py-2 rounded-lg font-medium text-sm transition-colors ${
+                      activeCategory === "Assets" 
+                      ? "bg-[#0a2e27] text-white" 
+                      : "bg-white border border-gray-200 text-gray-600 hover:bg-gray-50"
+                    }`}
+                  >
+                    Assets
+                  </button>
+                </div>
+              </div>
+
+              <div className="bg-[#f0f9f6] border border-[#d1e9e0] rounded-xl p-4 flex gap-3">
+                <Info className="text-[#0a2e27] shrink-0" size={20} />
+                <div className="text-[11px] text-gray-600 space-y-1">
+                  <p className="font-bold text-gray-700">Make sure to:</p>
+                  <ul className="list-disc list-inside space-y-0.5">
+                    <li>Double-check the item details before adding</li>
+                    <li>Set appropriate minimum quantity for reorder alerts</li>
+                    <li>Use consistent naming (e.g., "Zone: Area Name")</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6 pt-0 flex gap-3">
+              <button 
+                onClick={() => setIsModalOpen(false)}
+                className="flex-1 py-3 border border-gray-200 rounded-xl font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button className="flex-1 py-3 bg-[#0a2e27] text-white rounded-xl font-semibold hover:bg-[#08241f] transition-colors flex items-center justify-center gap-2">
+                <span>+</span> Add to Inventory
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
