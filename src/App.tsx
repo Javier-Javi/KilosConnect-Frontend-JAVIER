@@ -8,7 +8,7 @@ import { LostAndFoundPage } from './pages/LostAndFound'
 import { IncidentReportPage } from './pages/IncidentReport'
 
 function App() {
-  return <LostAndFoundPage/>
+  return <TaskMonitorPage/>
 }
 
 export default App
