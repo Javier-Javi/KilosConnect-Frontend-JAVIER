@@ -4,16 +4,16 @@ import { SafetyIncidentReportSection } from "./sections/SafetyIncidentReportSect
 import { SidebarNavigationSection } from "../../components/SidebarNavigationSection";
 import { TaskStatusPanelSection } from "./sections/TaskStatusPanelSection";
 
-export const DashboardPage : React.FC = () => {
+export const DashboardPage: React.FC = () => {
   return (
     <div className="flex h-screen bg-[#f4f5f6] overflow-hidden">
       {/* Fixed Sidebar */}
       <SidebarNavigationSection />
 
-      {/* Main content - scrollable */}
-      <div className="flex flex-col flex-1 min-w-0 ml-[240px] overflow-y-auto">
-        {/* Header */}
-        <header className="flex items-center justify-between px-8 pt-8 pb-4 bg-white border-b border-[#e8e8e8]">
+      {/* Main content area that handles scrolling for the whole page */}
+      <div className="flex flex-col flex-1 min-w-0 ml-[240px] overflow-y-auto h-full">
+        {/* Sticky Header */}
+        <header className="sticky top-0 z-20 flex items-center justify-between px-8 pt-8 pb-4 bg-white border-b border-[#e8e8e8]">
           <div>
             <h1 className="[font-family:'Poppins',Helvetica] font-semibold text-[#1f1f1f] text-[36px] leading-tight m-0 p-0">
               Dashboard
@@ -49,16 +49,16 @@ export const DashboardPage : React.FC = () => {
           </div>
         </header>
 
-        {/* Body */}
-        <div className="flex flex-1 gap-5 p-6 min-h-0">
-          {/* Left column */}
+        {/* Dashboard Grid Content */}
+        <div className="flex flex-1 gap-5 p-6">
+          {/* Left column (Inventory, Safety, Lost & Found) */}
           <div className="flex flex-col gap-5 flex-1 min-w-0">
             <AssetInventorySummarySection />
             <SafetyIncidentReportSection />
             <LostAndFoundTrackingSection />
           </div>
 
-          {/* Right: Task panel */}
+          {/* Right column (Tasks) */}
           <div className="flex-shrink-0 w-[300px]">
             <TaskStatusPanelSection />
           </div>
@@ -67,4 +67,5 @@ export const DashboardPage : React.FC = () => {
     </div>
   );
 };
-export  default DashboardPage;
+
+export default DashboardPage;

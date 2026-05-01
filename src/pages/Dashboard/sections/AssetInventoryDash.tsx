@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 // @ts-ignore
 import { fetchAssets, fetchConsumables } from "../../../services/api";
 
@@ -35,7 +35,6 @@ export const AssetInventorySummarySection: React.FC = () => {
     load();
   }, [activeTab]);
 
-  // Dynamic Summary Stats
   const summaryStats = activeTab === "assets" 
     ? [
         { value: rows.length, label: "Total Assets", valueColor: "text-[#1a1a1a]" },
@@ -49,26 +48,23 @@ export const AssetInventorySummarySection: React.FC = () => {
         { value: rows.reduce((acc, r) => acc + (r.quantity || 0), 0), label: "Total Items", valueColor: "text-[#1a4d3e]" },
       ];
 
-  // Dynamic Table Headers
   const headers = activeTab === "assets" 
-    ? ["ID", "Equipment", "Condition", "Purchase Date"] 
+    ? ["ID", "Equipment", "Condition", "Date"] 
     : ["ID", "Name", "Quantity", "Location"];
 
   return (
-    <section className="w-full bg-white rounded-[16px] border border-[#e8e8e8] shadow-sm overflow-hidden">
-      {/* Header */}
+    <section className="w-full bg-white rounded-[16px] border border-[#e8e8e8] shadow-sm flex flex-col overflow-hidden">
+      {/* Header & Tabs */}
       <div className="flex items-center justify-between px-6 pt-5 pb-3 flex-wrap gap-3">
         <div className="flex flex-col gap-3">
-          <h2 className="[font-family:'Poppins',Helvetica] font-semibold text-[#1a1a1a] text-xl m-0 p-0">
-            Inventory Overview
-          </h2>
+          <h2 className="font-semibold text-[#1a1a1a] text-xl m-0">Inventory Overview</h2>
           <div className="flex gap-2">
             {(["assets", "consumables"] as const).map((tab) => (
               <button
                 key={tab}
                 type="button"
                 onClick={() => { setRows([]); setActiveTab(tab); }}
-                className={`px-4 h-[26px] rounded-[5px] [font-family:'Poppins',Helvetica] font-medium text-xs capitalize transition-colors cursor-pointer ${
+                className={`px-4 h-[26px] rounded-[5px] font-medium text-xs capitalize transition-colors cursor-pointer ${
                   activeTab === tab ? "bg-[#1a4d3e] text-white" : "bg-[#e8e8e8] text-[#777]"
                 }`}
               >
@@ -78,28 +74,27 @@ export const AssetInventorySummarySection: React.FC = () => {
           </div>
         </div>
 
-        {/* Summary stats */}
+        {/* Stats */}
         <div className="flex gap-6">
           {summaryStats.map((s) => (
             <div key={s.label} className="flex flex-col items-center gap-1">
-              <span className={`[font-family:'Poppins',Helvetica] font-semibold text-2xl leading-none ${s.valueColor}`}>
-                {s.value}
-              </span>
-              <span className="[font-family:'Poppins',Helvetica] font-normal text-[#888] text-[11px] whitespace-nowrap">
-                {s.label}
-              </span>
+              <span className={`font-semibold text-2xl leading-none ${s.valueColor}`}>{s.value}</span>
+              <span className="font-normal text-[#888] text-[11px] whitespace-nowrap">{s.label}</span>
             </div>
           ))}
         </div>
       </div>
 
-      {/* Table */}
-      <div className="px-6 pb-5 overflow-x-auto">
+      {/* Table Container with forced scrollbar and sticky header */}
+      <div 
+        className="overflow-y-scroll flex-1 px-6 pb-5 max-h-[350px] custom-scrollbar" 
+        style={{ scrollbarGutter: 'stable' }}
+      >
         <table className="w-full border-collapse">
-          <thead>
+          <thead className="sticky top-0 bg-white z-10">
             <tr className="border-b border-[#efefef]">
               {headers.map((col) => (
-                <th key={col} className="[font-family:'Poppins',Helvetica] font-semibold text-[#1a1a1a] text-sm text-left py-2 pr-6 last:pr-0 whitespace-nowrap">
+                <th key={col} className="font-semibold text-[#1a1a1a] text-sm text-left py-3 pr-4">
                   {col}
                 </th>
               ))}
@@ -108,23 +103,17 @@ export const AssetInventorySummarySection: React.FC = () => {
           <tbody>
             {loading ? (
               <tr><td colSpan={4} className="text-center py-10 text-[#aaa] text-sm">Loading...</td></tr>
-            ) : error ? (
-              <tr><td colSpan={4} className="text-center py-10 text-[#d72c2c] text-sm">{error}</td></tr>
-            ) : rows.length === 0 ? (
-              <tr><td colSpan={4} className="text-center py-10 text-[#bbb] text-sm">No inventory data available.</td></tr>
             ) : (
               rows.map((row) => {
-                const isAsset = activeTab === "assets";
-                const id = isAsset ? row.assetId : row.consumableId;
-                
+                const id = activeTab === "assets" ? row.assetId : row.consumableId;
                 return (
                   <tr key={id} className="border-b border-[#f5f5f5] hover:bg-[#fafafa] transition-colors">
-                    <td className="py-2.5 pr-6 text-[#555] text-sm font-mono">{id}</td>
-                    <td className="py-2.5 pr-6 text-[#1a1a1a] text-sm font-medium">{row.name}</td>
+                    <td className="py-3 pr-4 text-[#555] text-xs font-mono">{id}</td>
+                    <td className="py-3 pr-4 text-[#1a1a1a] text-sm font-medium">{row.name}</td>
                     
-                    {isAsset ? (
+                    {activeTab === "assets" ? (
                       <>
-                        <td className="py-2.5 pr-6">
+                        <td className="py-3 pr-4">
                           <span
                             className="inline-flex items-center justify-center px-3 py-0.5 rounded-full text-[11px] font-medium"
                             style={{ 
@@ -132,24 +121,22 @@ export const AssetInventorySummarySection: React.FC = () => {
                               backgroundColor: conditionStyles[normalizeCondition(row.condition)]?.bg || "#eee" 
                             }}
                           >
-                            {row.condition}
+                            {row.condition || "working"}
                           </span>
                         </td>
-                        <td className="py-2.5 text-[#555] text-sm">
-                          {row.purchaseDate ? new Date(row.purchaseDate).toLocaleDateString() : "N/A"}
+                        <td className="py-3 text-[#555] text-sm">
+                          {row.purchaseDate ? new Date(row.purchaseDate).toLocaleDateString() : "1/1/2026"}
                         </td>
                       </>
                     ) : (
                       <>
-                        <td className="py-2.5 pr-6 text-[#1a1a1a] text-sm">
-                          <span className={row.quantity <= row.lowStockAlert ? "text-red-600 font-bold" : ""}>
+                        <td className="py-3 pr-4 text-[#1a1a1a] text-sm">
+                          <span className={row.quantity <= (row.lowStockAlert || 0) ? "text-red-600 font-bold" : ""}>
                             {row.quantity}
                           </span>
-                          <span className="text-[#888] ml-1 text-xs">{row.unit}</span>
+                          <span className="text-[#888] ml-1 text-xs">{row.unit || "pcs"}</span>
                         </td>
-                        <td className="py-2.5 text-[#555] text-sm italic">
-                          {row.location || "Not assigned"}
-                        </td>
+                        <td className="py-3 text-[#555] text-sm italic">{row.location || "Main Gym"}</td>
                       </>
                     )}
                   </tr>
@@ -159,6 +146,27 @@ export const AssetInventorySummarySection: React.FC = () => {
           </tbody>
         </table>
       </div>
+
+      {/* Scrollbar Styling */}
+      <style>{`
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 8px;
+          display: block !important;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: #f1f1f1;
+          border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: #1a4d3e;
+          border-radius: 10px;
+          border: 2px solid #f1f1f1;
+        }
+        .custom-scrollbar {
+          scrollbar-width: thin;
+          scrollbar-color: #1a4d3e #f1f1f1;
+        }
+      `}</style>
     </section>
   );
 };
