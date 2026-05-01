@@ -15,10 +15,12 @@ interface LostFoundItem {
 }
 
 export const LostAndFoundPage: React.FC = () => {
-  // Initialized as empty for MongoDB connection
   const [items, setItems] = useState<LostFoundItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"All" | "Unclaimed" | "Claimed">("All");
+  
+  // --- New State for Modal ---
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   useEffect(() => {
     const fetchLostFound = async () => {
@@ -35,17 +37,26 @@ export const LostAndFoundPage: React.FC = () => {
     fetchLostFound();
   }, []);
 
-  // Filter logic for the UI tabs
   const filteredItems = items.filter(item => 
     filter === "All" ? true : item.status === filter
   );
+
+  // --- Handler to add new item to state ---
+  const handleAddItem = (newItem: Omit<LostFoundItem, "_id" | "status">) => {
+    const itemWithId: LostFoundItem = {
+      ...newItem,
+      _id: Math.random().toString(36).substr(2, 9), // Temporary ID generation
+      status: "Unclaimed"
+    };
+    setItems(prev => [itemWithId, ...prev]);
+    setIsModalOpen(false);
+  };
 
   return (
     <div className="flex h-screen bg-[#f4f5f6] overflow-hidden">
       <SidebarNavigationSection />
 
       <div className="flex flex-col flex-1 min-w-0 ml-[240px] overflow-y-auto">
-        {/* Header matching dashboard theme */}
         <header className="flex items-center justify-between px-10 pt-10 pb-6">
           <div>
             <h1 className="[font-family:'Poppins',Helvetica] font-semibold text-[#1f1f1f] text-[32px] leading-tight m-0">
@@ -64,29 +75,12 @@ export const LostAndFoundPage: React.FC = () => {
         </header>
 
         <div className="px-10 pb-10 space-y-6">
-          {/* Summary Stats - Updated with icons from image_4bac81.png */}
           <div className="grid grid-cols-3 gap-6">
-            <StatCard 
-              label="Total Items" 
-              count={items.length} 
-              color="text-[#0a4a44]" 
-              iconBg="bg-[#dcfce7]" 
-            />
-            <StatCard 
-              label="Unclaimed" 
-              count={items.filter(i => i.status === "Unclaimed").length} 
-              color="text-[#b45309]" 
-              iconBg="bg-[#fef3c7]" 
-            />
-            <StatCard 
-              label="Claimed" 
-              count={items.filter(i => i.status === "Claimed").length} 
-              color="text-[#15803d]" 
-              iconBg="bg-[#dcfce7]" 
-            />
+            <StatCard label="Total Items" count={items.length} color="text-[#0a4a44]" iconBg="bg-[#dcfce7]" />
+            <StatCard label="Unclaimed" count={items.filter(i => i.status === "Unclaimed").length} color="text-[#b45309]" iconBg="bg-[#fef3c7]" />
+            <StatCard label="Claimed" count={items.filter(i => i.status === "Claimed").length} color="text-[#15803d]" iconBg="bg-[#dcfce7]" />
           </div>
 
-          {/* Search and Filters */}
           <div className="bg-white p-6 rounded-[16px] border border-[#e8e8e8] shadow-sm flex flex-col gap-4">
             <div className="flex gap-4">
               <div className="relative flex-1">
@@ -95,7 +89,13 @@ export const LostAndFoundPage: React.FC = () => {
                 </span>
                 <input type="text" placeholder="Search items..." className="w-full pl-10 pr-4 py-2 bg-white border border-[#e8e8e8] rounded-[8px] focus:outline-none text-sm" />
               </div>
-              <button className="bg-[#0a2e27] text-white px-6 py-2 rounded-[8px] text-sm font-medium hover:bg-[#08241f] transition-colors">+ Add Item</button>
+              {/* Trigger Modal on Click */}
+              <button 
+                onClick={() => setIsModalOpen(true)}
+                className="bg-[#0a2e27] text-white px-6 py-2 rounded-[8px] text-sm font-medium hover:bg-[#08241f] transition-colors"
+              >
+                + Add Item
+              </button>
             </div>
             <div className="flex gap-2">
               {["All", "Unclaimed", "Claimed"].map((tab) => (
@@ -112,7 +112,6 @@ export const LostAndFoundPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Grid Area - Populated by MongoDB */}
           <div className="bg-white p-8 rounded-[16px] border border-[#e8e8e8] shadow-sm min-h-[500px]">
             {loading ? (
               <div className="flex flex-col items-center justify-center h-[400px] text-gray-400 animate-pulse">
@@ -132,15 +131,133 @@ export const LostAndFoundPage: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Render the Modal */}
+      {isModalOpen && (
+        <AddItemModal 
+          onClose={() => setIsModalOpen(false)} 
+          onSubmit={handleAddItem} 
+        />
+      )}
     </div>
   );
 };
 
-// --- Sub-components for Visual Consistency ---
+// --- New Add Item Modal Component ---
+
+const AddItemModal = ({ onClose, onSubmit }: { onClose: () => void, onSubmit: (data: any) => void }) => {
+  const [formData, setFormData] = useState({
+    name: "",
+    description: "",
+    location: "",
+    foundBy: "",
+    date: ""
+  });
+
+  // Zones derived from facility documentation
+  const zones = [
+    "Mezzanine", 
+    "Powerlifting Area", 
+    "Open WOD Area", 
+    "CrossFit Area", 
+    "Café", 
+    "General Storage Room"
+  ];
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onSubmit(formData);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+      <div className="bg-white rounded-[16px] shadow-xl w-full max-w-[500px] overflow-hidden animate-in fade-in zoom-in duration-200">
+        {/* Header from image_3c343c.png */}
+        <div className="bg-[#1e4d46] p-6 text-white relative">
+          <h2 className="text-xl font-semibold">Add Lost Item</h2>
+          <p className="text-white/70 text-sm">Fill in the details to add an item to the Lost and Found</p>
+          <button onClick={onClose} className="absolute top-6 right-6 text-white/70 hover:text-white text-xl">&times;</button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-8 space-y-5">
+          <div>
+            <label className="block text-xs font-bold text-gray-500 mb-1 uppercase">Item Name *</label>
+            <input 
+              required
+              className="w-full px-4 py-2 bg-white border border-[#e8e8e8] rounded-[8px] focus:outline-none text-sm"
+              placeholder="Enter item name"
+              onChange={(e) => setFormData({...formData, name: e.target.value})}
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-gray-500 mb-1 uppercase">Description *</label>
+            <textarea 
+              required
+              className="w-full px-4 py-2 bg-white border border-[#e8e8e8] rounded-[8px] focus:outline-none text-sm min-h-[80px]"
+              placeholder="e.g., Insulated black water bottle with Kilos PH sticker"
+              onChange={(e) => setFormData({...formData, description: e.target.value})}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-bold text-gray-500 mb-1 uppercase">Found In *</label>
+              <select 
+                required
+                className="w-full px-4 py-2 bg-white border border-[#e8e8e8] rounded-[8px] focus:outline-none text-sm appearance-none"
+                onChange={(e) => setFormData({...formData, location: e.target.value})}
+              >
+                <option value="">Select Zone</option>
+                {zones.map(zone => <option key={zone} value={zone}>{zone}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-500 mb-1 uppercase">Found By *</label>
+              <input 
+                required
+                className="w-full px-4 py-2 bg-white border border-[#e8e8e8] rounded-[8px] focus:outline-none text-sm"
+                placeholder="Staff name"
+                onChange={(e) => setFormData({...formData, foundBy: e.target.value})}
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-gray-500 mb-1 uppercase">Date Found *</label>
+            <input 
+              required
+              type="date"
+              className="w-full px-4 py-2 bg-white border border-[#e8e8e8] rounded-[8px] focus:outline-none text-sm"
+              onChange={(e) => setFormData({...formData, date: e.target.value})}
+            />
+          </div>
+
+          <div className="flex gap-3 pt-4">
+            <button 
+              type="button" 
+              onClick={onClose}
+              className="flex-1 py-2.5 border border-[#e8e8e8] rounded-[8px] text-sm font-semibold text-gray-600 hover:bg-gray-50"
+            >
+              Cancel
+            </button>
+            <button 
+              type="submit"
+              className="flex-1 py-2.5 bg-[#1e4d46] text-white rounded-[8px] text-sm font-semibold flex items-center justify-center gap-2"
+            >
+              <span>+</span> Add to Inventory
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+// --- Sub-components for Visual Consistency (Keeping your existing ones) ---
 
 const StatCard = ({ label, count, color, iconBg }: any) => (
   <div className="flex items-center gap-4 p-6 bg-white border border-[#e8e8e8] rounded-[16px] shadow-sm">
-    {/* Icon Container matching image_4bac81.png */}
     <div className={`w-12 h-12 flex items-center justify-center rounded-[10px] ${iconBg}`}>
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" className={color} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M21 8V21H3V8" />
