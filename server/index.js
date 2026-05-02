@@ -26,12 +26,13 @@
       
       // Consumable Routes
       app.get("/api/consumables", getAllConsumables);
-      
+   
       
       // 2. Add this POST route to handle adding new items
       app.post("/api/consumables", createConsumable);
       app.post("/api/assets", createAsset);
       
+
       app.patch("/api/assets/:id", updateAsset);
 
       app.listen(5000, () => console.log("🚀 Server running on port 5000"));
