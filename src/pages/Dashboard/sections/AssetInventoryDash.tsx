@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
-// @ts-ignore
-import { fetchAssets, fetchConsumables } from "../../../services/api";
+
+import { fetchAssets, fetchConsumables } from "../../../services/InventoryServices";
 
 const conditionStyles: Record<string, { color: string; bg: string }> = {
   working: { color: "#1a7a4a", bg: "#e6f4ed" },

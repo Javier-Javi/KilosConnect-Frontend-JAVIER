@@ -2,16 +2,15 @@ import React, { useState, useEffect } from "react";
 import { SidebarNavigationSection } from "../components/SidebarNavigationSection";
 import { X, Info, CheckCircle2, AlertCircle, Wrench, Clock } from "lucide-react";
 // Import the API services
-// @ts-ignore
-import { fetchAssets, fetchConsumables } from "../services/api";
+import { inventoryService } from "../services/InventoryServices";
 
-// --- Types updated to match MongoDB Models ---
+// --- Types updated to match your MongoDB Schema ---
 interface InventoryItemData {
   _id: string;
   consumableId: string;
   name: string;
   category: string;
-  lowStockAlert: number; 
+  lowStockAlert: number;
   quantity: number;
   unit: string;
   location: string;
@@ -22,7 +21,7 @@ interface EquipmentAsset {
   assetId: string;
   name: string;
   condition: "Working" | "Damaged" | "Need Repair" | "Under Repair";
-  location: string;
+  area: string; // Matches 'area' field in your database
   purchaseDate: string;
 }
 
@@ -31,14 +30,14 @@ export const InventoryPage: React.FC = () => {
   const [assets, setAssets] = useState<EquipmentAsset[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [activeCategory, setActiveCategory] = useState<"Consumables" | "Assets">("Consumables");
-  
+
   // --- Asset State ---
   const [selectedAsset, setSelectedAsset] = useState<EquipmentAsset | null>(null);
 
-  // --- NEW: Consumable Update State ---
+  // --- Consumable Update State ---
   const [selectedConsumable, setSelectedConsumable] = useState<InventoryItemData | null>(null);
   const [newQuantity, setNewQuantity] = useState<number>(0);
 
@@ -49,7 +48,7 @@ export const InventoryPage: React.FC = () => {
   const [formData, setFormData] = useState({
     name: "",
     quantity: "",
-    location: "",
+    location: "", // Used for both location (consumables) and area (assets)
     lowStockAlert: ""
   });
 
@@ -57,8 +56,8 @@ export const InventoryPage: React.FC = () => {
     setLoading(true);
     try {
       const [assetsData, consumablesData] = await Promise.all([
-        fetchAssets(),
-        fetchConsumables()
+        inventoryService.fetchAssets(),
+        inventoryService.fetchConsumables()
       ]);
       setAssets(assetsData);
       setConsumables(consumablesData);
@@ -82,57 +81,36 @@ export const InventoryPage: React.FC = () => {
   const handleConditionUpdate = async (newCondition: string) => {
     if (!selectedAsset) return;
     try {
-      const response = await fetch(`http://localhost:5000/api/assets/${selectedAsset._id}`, {
-        method: "PATCH", 
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ condition: newCondition }),
-      });
-
-      if (response.ok) {
-        setSelectedAsset(null);
-        fetchData();
-      } else {
-        const errorData = await response.json();
-        alert(`Server Error: ${errorData.message || "Route not found (404)"}`);
-      }
-    } catch (err) {
+      await inventoryService.updateAssetCondition(selectedAsset._id, newCondition);
+      setSelectedAsset(null);
+      fetchData();
+    } catch (err: any) {
       console.error("Network error:", err);
-      alert("Could not connect to the server.");
+      alert(err.message || "Could not connect to the server.");
     }
   };
 
-  // --- NEW: Quantity Update Function ---
   const handleQuantityUpdate = async () => {
     if (!selectedConsumable) return;
     try {
-      const response = await fetch(`http://localhost:5000/api/consumables/${selectedConsumable._id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ quantity: newQuantity }),
-      });
-
-      if (response.ok) {
-        setSelectedConsumable(null);
-        fetchData();
-      } else {
-        const errorData = await response.json();
-        alert(`Failed to update: ${errorData.error || "Check console"}`);
-      }
-    } catch (error) {
-      console.error("Network error:", error);
-      alert("Could not connect to the server.");
+      await inventoryService.updateConsumableQuantity(selectedConsumable._id, newQuantity);
+      setSelectedConsumable(null);
+      fetchData();
+    } catch (err: any) {
+      console.error("Network error:", err);
+      alert(err.message || "Could not connect to the server.");
     }
   };
 
-  const filteredConsumables = consumables.filter(item => 
+  const filteredConsumables = consumables.filter(item =>
     item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     (item.location && item.location.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
-  const filteredAssets = assets.filter(asset => 
+  const filteredAssets = assets.filter(asset =>
     asset.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     asset.assetId.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (asset.location && asset.location.toLowerCase().includes(searchQuery.toLowerCase()))
+    (asset.area && asset.area.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
   const handleAddItem = async () => {
@@ -141,39 +119,33 @@ export const InventoryPage: React.FC = () => {
       return;
     }
     const isAsset = activeCategory === "Assets";
-    const endpoint = isAsset ? "assets" : "consumables";
     const idPrefix = isAsset ? "AST" : "CON";
 
+    const bodyData = {
+      [isAsset ? 'assetId' : 'consumableId']: `${idPrefix}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`,
+      name: formData.name,
+      quantity: Number(formData.quantity) || 0,
+      category: activeCategory,
+      [isAsset ? 'area' : 'location']: formData.location,
+      lowStockAlert: Number(formData.lowStockAlert) || 0,
+      condition: "Working",
+      purchaseDate: new Date().toISOString(),
+      isArchived: false
+    };
+
     try {
-      const bodyData = {
-        [isAsset ? 'assetId' : 'consumableId']: `${idPrefix}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`,
-        name: formData.name,
-        quantity: Number(formData.quantity) || 0,
-        category: activeCategory,
-        [isAsset ? 'area' : 'location']: formData.location, 
-        lowStockAlert: Number(formData.lowStockAlert) || 0, 
-        condition: "Working",
-        purchaseDate: new Date().toISOString(),
-        isArchived: false
-      };
-
-      const response = await fetch(`http://localhost:5000/api/${endpoint}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(bodyData),
-      });
-
-      if (response.ok) {
-        setIsModalOpen(false);
-        setFormData({ name: "", quantity: "", location: "", lowStockAlert: "" });
-        fetchData(); 
+      if (isAsset) {
+        await inventoryService.addAsset(bodyData);
       } else {
-        const errorData = await response.json();
-        alert(`Failed to add: ${errorData.error || "Check console"}`);
+        await inventoryService.addConsumable(bodyData);
       }
-    } catch (error) {
-      console.error("Network error:", error);
-      alert("Could not connect to the server.");
+
+      setIsModalOpen(false);
+      setFormData({ name: "", quantity: "", location: "", lowStockAlert: "" });
+      fetchData();
+    } catch (err: any) {
+      console.error("Network error:", err);
+      alert(err.message || "Could not connect to the server.");
     }
   };
 
@@ -231,30 +203,48 @@ export const InventoryPage: React.FC = () => {
             </div>
           )}
 
-          <div className="flex flex-col lg:flex-row flex-1 gap-6">
-            <div className="flex-1 lg:flex-[2] bg-white rounded-3xl p-4 md:p-8 border border-[#e8e8e8] shadow-sm min-w-0">
+          <div className="flex flex-col flex-1 gap-6">
+            <div className="flex-1 bg-white rounded-3xl p-4 md:p-8 border border-[#e8e8e8] shadow-sm min-w-0">
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
                 <h2 className="text-xl md:text-2xl font-semibold text-[#1f1f1f]">Inventory Overview</h2>
+                
                 <div className="flex gap-6">
-                  <div className="text-center">
-                    <div className="text-red-500 font-bold text-lg leading-none">{outOfStockItems.length}</div>
-                    <div className="text-[10px] text-[#6b6b6b] uppercase font-bold">Out of Stock</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-orange-400 font-bold text-lg leading-none">{lowStockItems.length}</div>
-                    <div className="text-[10px] text-[#6b6b6b] uppercase font-bold">Low Stock</div>
-                  </div>
+                  {activeCategory === "Consumables" ? (
+                    <>
+                      <div className="text-center">
+                        <div className="text-red-500 font-bold text-lg leading-none">{outOfStockItems.length}</div>
+                        <div className="text-[10px] text-[#6b6b6b] uppercase font-bold">Out of Stock</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-orange-400 font-bold text-lg leading-none">{lowStockItems.length}</div>
+                        <div className="text-[10px] text-[#6b6b6b] uppercase font-bold">Low Stock</div>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      {[
+                        { label: "Damaged", val: assets.filter(a => a.condition === "Damaged").length, color: "text-red-500" },
+                        { label: "Need Repair", val: assets.filter(a => a.condition === "Need Repair").length, color: "text-orange-400" },
+                        { label: "Under Repair", val: assets.filter(a => a.condition === "Under Repair").length, color: "text-blue-500" },
+                      ].map((stat, i) => (
+                        <div key={i} className="text-center">
+                          <div className={`text-lg font-bold ${stat.color}`}>{stat.val}</div>
+                          <div className="text-[10px] text-gray-500 uppercase font-bold leading-tight">{stat.label}</div>
+                        </div>
+                      ))}
+                    </>
+                  )}
                 </div>
               </div>
 
               <div className="flex gap-2 mb-6">
-                <button 
+                <button
                   onClick={() => setActiveCategory("Consumables")}
                   className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${activeCategory === "Consumables" ? "bg-[#0a2e27] text-white" : "bg-[#d1d1d1] text-[#6b6b6b]"}`}
                 >
                   Consumables
                 </button>
-                <button 
+                <button
                   onClick={() => setActiveCategory("Assets")}
                   className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${activeCategory === "Assets" ? "bg-[#0a2e27] text-white" : "bg-[#d1d1d1] text-[#6b6b6b]"}`}
                 >
@@ -271,14 +261,14 @@ export const InventoryPage: React.FC = () => {
                   <span className="absolute left-4 top-1/2 -translate-y-1/2">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6b6b6b" strokeWidth="2"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" /></svg>
                   </span>
-                  <input 
-                    className="w-full pl-11 pr-4 py-3 rounded-xl border border-[#e8e8e8] focus:outline-none focus:border-[#0a2e27] transition-colors" 
-                    placeholder="Search items..." 
+                  <input
+                    className="w-full pl-11 pr-4 py-3 rounded-xl border border-[#e8e8e8] focus:outline-none focus:border-[#0a2e27] transition-colors"
+                    placeholder="Search items..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                   />
                 </div>
-                <button 
+                <button
                   onClick={() => setIsModalOpen(true)}
                   className="bg-[#0a2e27] text-white px-6 py-3 rounded-xl flex items-center justify-center gap-2 font-medium text-sm hover:bg-[#08241f] transition-colors"
                 >
@@ -286,7 +276,7 @@ export const InventoryPage: React.FC = () => {
                 </button>
               </div>
 
-              <div className="max-h-[440px] overflow-y-auto pr-2 custom-scrollbar">
+              <div className="max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
                 <div className="space-y-3">
                   {loading ? (
                     <div className="py-10 text-center text-gray-400 animate-pulse">Loading items...</div>
@@ -296,8 +286,8 @@ export const InventoryPage: React.FC = () => {
                         const low = isLowStock(item);
                         const out = isOutOfStock(item);
                         return (
-                          <div 
-                            key={item._id} 
+                          <div
+                            key={item._id}
                             onClick={() => {
                               setSelectedConsumable(item);
                               setNewQuantity(item.quantity);
@@ -335,18 +325,19 @@ export const InventoryPage: React.FC = () => {
                   ) : (
                     filteredAssets.length > 0 ? (
                       filteredAssets.map((asset) => (
-                        <div 
-                          key={asset._id} 
+                        <div
+                          key={asset._id}
                           onClick={() => setSelectedAsset(asset)}
-                          className="flex items-center justify-between p-4 bg-white border border-[#e8e8e8] rounded-xl hover:shadow-md transition-all cursor-pointer group"
+                          className="flex items-center justify-between p-4 bg-white border border-[#e8e8e8] rounded-xl hover:shadow-md transition-all cursor-pointer group mb-3"
                         >
                           <div className="flex items-center gap-3 md:gap-4 min-w-0">
                             <div className="w-10 h-10 flex items-center justify-center rounded-lg bg-[#f4f5f6] group-hover:bg-[#0a2e27] transition-colors">
-                               <svg className="group-hover:stroke-white transition-colors" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6b6b6b" strokeWidth="2"><path d="M20 7h-9m3 10h5M3 7h2m4 0h2m0 10H3m8-10v10M7 7v10" /></svg>
+                              <svg className="group-hover:stroke-white transition-colors" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6b6b6b" strokeWidth="2"><path d="M20 7h-9m3 10h5M3 7h2m4 0h2m0 10H3m8-10v10M7 7v10" /></svg>
                             </div>
                             <div className="truncate">
-                               <h4 className="font-semibold text-base md:text-lg text-[#1f1f1f] truncate group-hover:text-[#0a2e27]">{asset.name}</h4>
-                               <p className="text-xs md:text-sm text-[#6b6b6b]">ID: {asset.assetId} • {asset.location}</p>
+                              <h4 className="font-semibold text-base md:text-lg text-[#1f1f1f] truncate group-hover:text-[#0a2e27]">{asset.name}</h4>
+                              {/* Using .area from your MongoDB schema */}
+                              <p className="text-xs md:text-sm text-[#6b6b6b]">ID: {asset.assetId} • {asset.area || "Unassigned"}</p>
                             </div>
                           </div>
                           <div className="text-right">
@@ -359,37 +350,6 @@ export const InventoryPage: React.FC = () => {
                     ) : (
                       <div className="py-10 text-center text-gray-400 border-2 border-dashed border-gray-100 rounded-xl">No assets found.</div>
                     )
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="w-full lg:w-[320px] bg-white rounded-3xl p-6 border border-[#e8e8e8] shadow-sm shrink-0">
-              <div className="grid grid-cols-4 gap-2 mb-8 border-b pb-6">
-                {[
-                  { label: "Total Assets", val: assets.length, color: "text-gray-900" },
-                  { label: "Damaged", val: assets.filter(a => a.condition === "Damaged").length, color: "text-red-500" },
-                  { label: "Need Repair", val: assets.filter(a => a.condition === "Need Repair").length, color: "text-orange-400" },
-                  { label: "Under Repair", val: assets.filter(a => a.condition === "Under Repair").length, color: "text-blue-500" },
-                ].map((stat, i) => (
-                  <div key={i} className="text-center">
-                    <div className={`text-lg font-bold ${stat.color}`}>{stat.val}</div>
-                    <div className="text-[8px] md:text-[9px] text-gray-500 uppercase font-bold leading-tight">{stat.label}</div>
-                  </div>
-                ))}
-              </div>
-              <h3 className="text-lg font-semibold mb-6">Equipment by Zone</h3>
-              <div className="max-h-[300px] overflow-y-auto pr-1">
-                <div className="space-y-4">
-                  {assets.length > 0 ? (
-                    Array.from(new Set(assets.map(a => a.location))).map(loc => (
-                      <div key={loc} className="flex justify-between items-center p-2 bg-gray-50 rounded-lg">
-                        <span className="text-sm font-medium text-gray-700">{loc || "Unassigned"}</span>
-                        <span className="text-sm font-bold text-[#0a2e27]">{assets.filter(a => a.location === loc).length}</span>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="text-center py-4 text-gray-400 text-sm italic">No zone data available.</div>
                   )}
                 </div>
               </div>
@@ -433,7 +393,7 @@ export const InventoryPage: React.FC = () => {
         </div>
       )}
 
-      {/* --- NEW MODAL: Update Consumable Quantity --- */}
+      {/* --- MODAL: Update Consumable Quantity --- */}
       {selectedConsumable && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
           <div className="bg-white w-full max-w-[350px] rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
@@ -445,17 +405,17 @@ export const InventoryPage: React.FC = () => {
             </div>
             <div className="p-6 space-y-4">
               <div className="flex items-center justify-center gap-6">
-                <button 
+                <button
                   onClick={() => setNewQuantity(Math.max(0, newQuantity - 1))}
                   className="w-12 h-12 rounded-full border-2 border-gray-200 flex items-center justify-center text-2xl hover:bg-gray-50"
                 >-</button>
-                <input 
-                  type="number" 
+                <input
+                  type="number"
                   value={newQuantity}
                   onChange={(e) => setNewQuantity(Number(e.target.value))}
                   className="w-20 text-center text-2xl font-bold focus:outline-none"
                 />
-                <button 
+                <button
                   onClick={() => setNewQuantity(newQuantity + 1)}
                   className="w-12 h-12 rounded-full border-2 border-gray-200 flex items-center justify-center text-2xl hover:bg-gray-50"
                 >+</button>
@@ -488,7 +448,7 @@ export const InventoryPage: React.FC = () => {
             <div className="p-6 space-y-4">
               <div className="space-y-1">
                 <label className="text-sm font-semibold text-gray-700">Item Name <span className="text-red-500">*</span></label>
-                <input 
+                <input
                   name="name"
                   value={formData.name}
                   onChange={handleInputChange}
@@ -501,7 +461,7 @@ export const InventoryPage: React.FC = () => {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <label className="text-sm font-semibold text-gray-700">Current Quantity</label>
-                  <input 
+                  <input
                     name="quantity"
                     value={formData.quantity}
                     onChange={handleInputChange}
@@ -512,7 +472,7 @@ export const InventoryPage: React.FC = () => {
                 </div>
                 <div className="space-y-1">
                   <label className="text-sm font-semibold text-gray-700">Zone / Area</label>
-                  <select 
+                  <select
                     name="location"
                     value={formData.location}
                     onChange={handleInputChange}
@@ -533,7 +493,7 @@ export const InventoryPage: React.FC = () => {
               {activeCategory === "Consumables" && (
                 <div className="space-y-1 animate-in fade-in slide-in-from-top-2 duration-200">
                   <label className="text-sm font-semibold text-gray-700">Minimum Quantity</label>
-                  <input 
+                  <input
                     name="lowStockAlert"
                     value={formData.lowStockAlert}
                     onChange={handleInputChange}
@@ -547,13 +507,13 @@ export const InventoryPage: React.FC = () => {
               <div className="space-y-1">
                 <label className="text-sm font-semibold text-gray-700">Category <span className="text-red-500">*</span></label>
                 <div className="grid grid-cols-2 gap-2">
-                  <button 
+                  <button
                     onClick={() => setActiveCategory("Consumables")}
                     className={`py-2 rounded-lg font-medium text-sm transition-colors ${activeCategory === "Consumables" ? "bg-[#0a2e27] text-white" : "bg-white border border-gray-200 text-gray-600"}`}
                   >
                     Consumables
                   </button>
-                  <button 
+                  <button
                     onClick={() => setActiveCategory("Assets")}
                     className={`py-2 rounded-lg font-medium text-sm transition-colors ${activeCategory === "Assets" ? "bg-[#0a2e27] text-white" : "bg-white border border-gray-200 text-gray-600"}`}
                   >
@@ -563,13 +523,11 @@ export const InventoryPage: React.FC = () => {
               </div>
 
               <div className="bg-[#f0f9f6] border border-[#d1e9e0] rounded-xl p-4 flex gap-3">
-                <Info className="text-[#0a2e27] shrink-0" size={20} />
                 <div className="text-[11px] text-gray-600 space-y-1">
                   <p className="font-bold text-gray-700">Make sure to:</p>
                   <ul className="list-disc list-inside space-y-0.5">
                     <li>Double-check the item details before adding</li>
                     {activeCategory === "Consumables" && <li>Set appropriate minimum quantity for reorder alerts</li>}
-                    <li>Use consistent naming (e.g., "Zone: Area Name")</li>
                   </ul>
                 </div>
               </div>
@@ -577,7 +535,7 @@ export const InventoryPage: React.FC = () => {
 
             <div className="p-6 pt-0 flex gap-3 mt-2">
               <button onClick={() => setIsModalOpen(false)} className="flex-1 py-3 border border-gray-200 rounded-xl font-semibold text-gray-600 hover:bg-gray-50">Cancel</button>
-              <button 
+              <button
                 onClick={handleAddItem}
                 className="flex-1 py-3 bg-[#0a2e27] text-white rounded-xl font-semibold hover:bg-[#08241f] flex items-center justify-center gap-2"
               >
