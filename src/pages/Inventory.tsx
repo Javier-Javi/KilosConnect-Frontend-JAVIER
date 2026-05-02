@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { SidebarNavigationSection } from "../components/SidebarNavigationSection";
-import { X, Info } from "lucide-react";
+import { X, Info, CheckCircle2, AlertCircle, Wrench, Clock } from "lucide-react";
 // Import the API services
 // @ts-ignore
 import { fetchAssets, fetchConsumables } from "../services/api";
@@ -21,7 +21,7 @@ interface EquipmentAsset {
   _id: string;
   assetId: string;
   name: string;
-  condition: "working" | "damaged" | "need repair" | "under repair";
+  condition: "Working" | "Damaged" | "Need Repair" | "Under Repair";
   location: string;
   purchaseDate: string;
 }
@@ -34,8 +34,15 @@ export const InventoryPage: React.FC = () => {
   
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [activeCategory, setActiveCategory] = useState<"Consumables" | "Assets">("Consumables");
+  
+  // --- Asset State ---
+  const [selectedAsset, setSelectedAsset] = useState<EquipmentAsset | null>(null);
 
-  // --- NEW: Search State ---
+  // --- NEW: Consumable Update State ---
+  const [selectedConsumable, setSelectedConsumable] = useState<InventoryItemData | null>(null);
+  const [newQuantity, setNewQuantity] = useState<number>(0);
+
+  // --- Search State ---
   const [searchQuery, setSearchQuery] = useState("");
 
   // Form State
@@ -72,7 +79,51 @@ export const InventoryPage: React.FC = () => {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  // --- Filter Logic for Search ---
+  const handleConditionUpdate = async (newCondition: string) => {
+    if (!selectedAsset) return;
+    try {
+      const response = await fetch(`http://localhost:5000/api/assets/${selectedAsset._id}`, {
+        method: "PATCH", 
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ condition: newCondition }),
+      });
+
+      if (response.ok) {
+        setSelectedAsset(null);
+        fetchData();
+      } else {
+        const errorData = await response.json();
+        alert(`Server Error: ${errorData.message || "Route not found (404)"}`);
+      }
+    } catch (err) {
+      console.error("Network error:", err);
+      alert("Could not connect to the server.");
+    }
+  };
+
+  // --- NEW: Quantity Update Function ---
+  const handleQuantityUpdate = async () => {
+    if (!selectedConsumable) return;
+    try {
+      const response = await fetch(`http://localhost:5000/api/consumables/${selectedConsumable._id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ quantity: newQuantity }),
+      });
+
+      if (response.ok) {
+        setSelectedConsumable(null);
+        fetchData();
+      } else {
+        const errorData = await response.json();
+        alert(`Failed to update: ${errorData.error || "Check console"}`);
+      }
+    } catch (error) {
+      console.error("Network error:", error);
+      alert("Could not connect to the server.");
+    }
+  };
+
   const filteredConsumables = consumables.filter(item => 
     item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     (item.location && item.location.toLowerCase().includes(searchQuery.toLowerCase()))
@@ -89,7 +140,6 @@ export const InventoryPage: React.FC = () => {
       alert("Please enter an item name");
       return;
     }
-
     const isAsset = activeCategory === "Assets";
     const endpoint = isAsset ? "assets" : "consumables";
     const idPrefix = isAsset ? "AST" : "CON";
@@ -128,11 +178,15 @@ export const InventoryPage: React.FC = () => {
   };
 
   const isLowStock = (item: InventoryItemData) => {
-    return item.quantity <= (item.lowStockAlert || 0);
+    return item.quantity > 0 && item.quantity <= (item.lowStockAlert || 0);
+  };
+
+  const isOutOfStock = (item: InventoryItemData) => {
+    return item.quantity === 0;
   };
 
   const lowStockItems = consumables.filter(isLowStock);
-  const outOfStockItems = consumables.filter(item => item.quantity === 0);
+  const outOfStockItems = consumables.filter(isOutOfStock);
 
   return (
     <div className="flex h-screen bg-[#f4f5f6] overflow-hidden relative">
@@ -160,7 +214,7 @@ export const InventoryPage: React.FC = () => {
             <div className="mb-4 p-4 bg-red-100 text-red-700 rounded-xl">Error: {error}</div>
           )}
 
-          {lowStockItems.length > 0 && (
+          {activeCategory === "Consumables" && (lowStockItems.length > 0 || outOfStockItems.length > 0) && (
             <div className="mb-6 flex items-start gap-4 p-4 bg-[#fff5f5] border border-[#feb2b2] rounded-xl animate-in fade-in slide-in-from-top-4 duration-300">
               <div className="p-2 bg-red-100 rounded-lg">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#e53e3e" strokeWidth="2">
@@ -169,8 +223,10 @@ export const InventoryPage: React.FC = () => {
                 </svg>
               </div>
               <div>
-                <h3 className="font-bold text-[#c53030] text-lg">Low Stock Alert</h3>
-                <p className="text-[#e53e3e] text-sm">{lowStockItems.length} items are below minimum stock level</p>
+                <h3 className="font-bold text-[#c53030] text-lg">Inventory Alert</h3>
+                <p className="text-[#e53e3e] text-sm">
+                  {outOfStockItems.length} out of stock and {lowStockItems.length} low stock items.
+                </p>
               </div>
             </div>
           )}
@@ -215,7 +271,6 @@ export const InventoryPage: React.FC = () => {
                   <span className="absolute left-4 top-1/2 -translate-y-1/2">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6b6b6b" strokeWidth="2"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" /></svg>
                   </span>
-                  {/* --- CONNECTED: Search Input --- */}
                   <input 
                     className="w-full pl-11 pr-4 py-3 rounded-xl border border-[#e8e8e8] focus:outline-none focus:border-[#0a2e27] transition-colors" 
                     placeholder="Search items..." 
@@ -231,74 +286,91 @@ export const InventoryPage: React.FC = () => {
                 </button>
               </div>
 
-              <div className="space-y-3">
-                {loading ? (
-                  <div className="py-10 text-center text-gray-400 animate-pulse">Loading items...</div>
-                ) : activeCategory === "Consumables" ? (
-                  filteredConsumables.length > 0 ? (
-                    filteredConsumables.map((item) => {
-                      const low = isLowStock(item);
-                      return (
-                        <div key={item._id} className={`flex items-center justify-between p-4 bg-white border rounded-xl hover:shadow-md transition-all ${low ? "border-[#feb2b2] shadow-[0_0_10px_rgba(254,178,178,0.2)]" : "border-[#e8e8e8]"}`}>
+              <div className="max-h-[440px] overflow-y-auto pr-2 custom-scrollbar">
+                <div className="space-y-3">
+                  {loading ? (
+                    <div className="py-10 text-center text-gray-400 animate-pulse">Loading items...</div>
+                  ) : activeCategory === "Consumables" ? (
+                    filteredConsumables.length > 0 ? (
+                      filteredConsumables.map((item) => {
+                        const low = isLowStock(item);
+                        const out = isOutOfStock(item);
+                        return (
+                          <div 
+                            key={item._id} 
+                            onClick={() => {
+                              setSelectedConsumable(item);
+                              setNewQuantity(item.quantity);
+                            }}
+                            className={`flex items-center justify-between p-4 bg-white border rounded-xl hover:shadow-md transition-all cursor-pointer group ${(low || out) ? "border-[#feb2b2] shadow-[0_0_10px_rgba(254,178,178,0.2)]" : "border-[#e8e8e8]"}`}
+                          >
+                            <div className="flex items-center gap-3 md:gap-4 min-w-0">
+                              <div className={`w-10 h-10 flex items-center justify-center rounded-lg shrink-0 ${(low || out) ? "bg-[#fff5f5]" : "bg-[#f4f5f6]"}`}>
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={(low || out) ? "#e53e3e" : "#6b6b6b"} strokeWidth="2">
+                                  <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+                                </svg>
+                              </div>
+                              <div className="truncate">
+                                <div className="flex items-center gap-2">
+                                  <h4 className={`font-semibold text-base md:text-lg truncate ${(low || out) ? "text-[#c53030]" : "text-[#1f1f1f]"}`}>{item.name}</h4>
+                                  {out ? (
+                                    <span className="px-2 py-0.5 bg-red-600 text-white text-[10px] font-bold rounded uppercase">Out of Stock</span>
+                                  ) : low ? (
+                                    <span className="px-2 py-0.5 bg-[#fff5f5] text-[#e53e3e] text-[10px] font-bold rounded uppercase">Low Stock</span>
+                                  ) : null}
+                                </div>
+                                <p className="text-xs md:text-sm text-[#6b6b6b] truncate">Category: {item.category || "Uncategorized"} • Min: {item.lowStockAlert}</p>
+                              </div>
+                            </div>
+                            <div className="text-right shrink-0 ml-4">
+                              <div className={`text-xl md:text-2xl font-bold ${(low || out) ? "text-[#c53030]" : "text-[#1f1f1f]"}`}>{item.quantity}</div>
+                              <div className="text-[10px] text-[#6b6b6b] uppercase tracking-wider font-bold">{item.unit || "pcs"}</div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <div className="py-10 text-center text-gray-400 border-2 border-dashed border-gray-100 rounded-xl">No consumables found.</div>
+                    )
+                  ) : (
+                    filteredAssets.length > 0 ? (
+                      filteredAssets.map((asset) => (
+                        <div 
+                          key={asset._id} 
+                          onClick={() => setSelectedAsset(asset)}
+                          className="flex items-center justify-between p-4 bg-white border border-[#e8e8e8] rounded-xl hover:shadow-md transition-all cursor-pointer group"
+                        >
                           <div className="flex items-center gap-3 md:gap-4 min-w-0">
-                            <div className={`w-10 h-10 flex items-center justify-center rounded-lg shrink-0 ${low ? "bg-[#fff5f5]" : "bg-[#f4f5f6]"}`}>
-                              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={low ? "#e53e3e" : "#6b6b6b"} strokeWidth="2">
-                                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
-                              </svg>
+                            <div className="w-10 h-10 flex items-center justify-center rounded-lg bg-[#f4f5f6] group-hover:bg-[#0a2e27] transition-colors">
+                               <svg className="group-hover:stroke-white transition-colors" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6b6b6b" strokeWidth="2"><path d="M20 7h-9m3 10h5M3 7h2m4 0h2m0 10H3m8-10v10M7 7v10" /></svg>
                             </div>
                             <div className="truncate">
-                              <div className="flex items-center gap-2">
-                                <h4 className={`font-semibold text-base md:text-lg truncate ${low ? "text-[#c53030]" : "text-[#1f1f1f]"}`}>{item.name}</h4>
-                                {low && <span className="px-2 py-0.5 bg-[#fff5f5] text-[#e53e3e] text-[10px] font-bold rounded uppercase">Low Stock</span>}
-                              </div>
-                              <p className="text-xs md:text-sm text-[#6b6b6b] truncate">Category: {item.category || "Uncategorized"} • Min: {item.lowStockAlert}</p>
+                               <h4 className="font-semibold text-base md:text-lg text-[#1f1f1f] truncate group-hover:text-[#0a2e27]">{asset.name}</h4>
+                               <p className="text-xs md:text-sm text-[#6b6b6b]">ID: {asset.assetId} • {asset.location}</p>
                             </div>
                           </div>
-                          <div className="text-right shrink-0 ml-4">
-                            <div className={`text-xl md:text-2xl font-bold ${low ? "text-[#c53030]" : "text-[#1f1f1f]"}`}>{item.quantity}</div>
-                            <div className="text-[10px] text-[#6b6b6b] uppercase tracking-wider font-bold">{item.unit || "pcs"}</div>
+                          <div className="text-right">
+                            <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase ${asset.condition === 'Working' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                              {asset.condition}
+                            </span>
                           </div>
                         </div>
-                      );
-                    })
-                  ) : (
-                    <div className="py-10 text-center text-gray-400 border-2 border-dashed border-gray-100 rounded-xl">No consumables found.</div>
-                  )
-                ) : (
-                  filteredAssets.length > 0 ? (
-                    filteredAssets.map((asset) => (
-                      <div key={asset._id} className="flex items-center justify-between p-4 bg-white border border-[#e8e8e8] rounded-xl hover:shadow-md transition-all">
-                        <div className="flex items-center gap-3 md:gap-4 min-w-0">
-                          <div className="w-10 h-10 flex items-center justify-center rounded-lg bg-[#f4f5f6]">
-                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6b6b6b" strokeWidth="2"><path d="M20 7h-9m3 10h5M3 7h2m4 0h2m0 10H3m8-10v10M7 7v10" /></svg>
-                          </div>
-                          <div className="truncate">
-                             <h4 className="font-semibold text-base md:text-lg text-[#1f1f1f] truncate">{asset.name}</h4>
-                             <p className="text-xs md:text-sm text-[#6b6b6b]">ID: {asset.assetId} • {asset.location}</p>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase ${asset.condition === 'working' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
-                            {asset.condition}
-                          </span>
-                        </div>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="py-10 text-center text-gray-400 border-2 border-dashed border-gray-100 rounded-xl">No assets found.</div>
-                  )
-                )}
+                      ))
+                    ) : (
+                      <div className="py-10 text-center text-gray-400 border-2 border-dashed border-gray-100 rounded-xl">No assets found.</div>
+                    )
+                  )}
+                </div>
               </div>
             </div>
 
-            {/* Sidebar Stats */}
             <div className="w-full lg:w-[320px] bg-white rounded-3xl p-6 border border-[#e8e8e8] shadow-sm shrink-0">
               <div className="grid grid-cols-4 gap-2 mb-8 border-b pb-6">
                 {[
                   { label: "Total Assets", val: assets.length, color: "text-gray-900" },
-                  { label: "Damaged", val: assets.filter(a => a.condition === "damaged").length, color: "text-red-500" },
-                  { label: "Need Repair", val: assets.filter(a => a.condition === "need repair").length, color: "text-orange-400" },
-                  { label: "Under Repair", val: assets.filter(a => a.condition === "under repair").length, color: "text-blue-500" },
+                  { label: "Damaged", val: assets.filter(a => a.condition === "Damaged").length, color: "text-red-500" },
+                  { label: "Need Repair", val: assets.filter(a => a.condition === "Need Repair").length, color: "text-orange-400" },
+                  { label: "Under Repair", val: assets.filter(a => a.condition === "Under Repair").length, color: "text-blue-500" },
                 ].map((stat, i) => (
                   <div key={i} className="text-center">
                     <div className={`text-lg font-bold ${stat.color}`}>{stat.val}</div>
@@ -307,24 +379,99 @@ export const InventoryPage: React.FC = () => {
                 ))}
               </div>
               <h3 className="text-lg font-semibold mb-6">Equipment by Zone</h3>
-              <div className="space-y-4">
-                {assets.length > 0 ? (
-                  Array.from(new Set(assets.map(a => a.location))).map(loc => (
-                    <div key={loc} className="flex justify-between items-center p-2 bg-gray-50 rounded-lg">
-                      <span className="text-sm font-medium text-gray-700">{loc || "Unassigned"}</span>
-                      <span className="text-sm font-bold text-[#0a2e27]">{assets.filter(a => a.location === loc).length}</span>
-                    </div>
-                  ))
-                ) : (
-                  <div className="text-center py-4 text-gray-400 text-sm italic">No zone data available.</div>
-                )}
+              <div className="max-h-[300px] overflow-y-auto pr-1">
+                <div className="space-y-4">
+                  {assets.length > 0 ? (
+                    Array.from(new Set(assets.map(a => a.location))).map(loc => (
+                      <div key={loc} className="flex justify-between items-center p-2 bg-gray-50 rounded-lg">
+                        <span className="text-sm font-medium text-gray-700">{loc || "Unassigned"}</span>
+                        <span className="text-sm font-bold text-[#0a2e27]">{assets.filter(a => a.location === loc).length}</span>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-center py-4 text-gray-400 text-sm italic">No zone data available.</div>
+                  )}
+                </div>
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* MODAL */}
+      {/* --- MODAL: Update Asset Condition --- */}
+      {selectedAsset && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white w-full max-w-[400px] rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="bg-[#0a2e27] p-5 flex justify-between items-center">
+               <div>
+                  <h3 className="text-white font-bold">{selectedAsset.name}</h3>
+                  <p className="text-white/70 text-xs">{selectedAsset.assetId}</p>
+               </div>
+               <button onClick={() => setSelectedAsset(null)} className="text-white/70 hover:text-white">
+                  <X size={20} />
+               </button>
+            </div>
+            <div className="p-6 space-y-3">
+              <p className="text-sm font-semibold text-gray-600 mb-2">Update Equipment Condition:</p>
+              {[
+                { label: "Working", icon: <CheckCircle2 className="text-green-600" size={18}/>, bg: "hover:bg-green-50" },
+                { label: "Damaged", icon: <AlertCircle className="text-red-600" size={18}/>, bg: "hover:bg-red-50" },
+                { label: "Need Repair", icon: <Wrench className="text-orange-500" size={18}/>, bg: "hover:bg-orange-50" },
+                { label: "Under Repair", icon: <Clock className="text-blue-500" size={18}/>, bg: "hover:bg-blue-50" }
+              ].map((option) => (
+                <button
+                  key={option.label}
+                  onClick={() => handleConditionUpdate(option.label)}
+                  className={`w-full flex items-center gap-3 p-4 rounded-xl border border-gray-100 transition-all text-left font-medium text-gray-700 ${option.bg} ${selectedAsset.condition === option.label ? 'bg-gray-100 border-[#0a2e27]' : ''}`}
+                >
+                  {option.icon}
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- NEW MODAL: Update Consumable Quantity --- */}
+      {selectedConsumable && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white w-full max-w-[350px] rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="bg-[#0a2e27] p-5 flex justify-between items-center">
+              <h3 className="text-white font-bold">Update Stock: {selectedConsumable.name}</h3>
+              <button onClick={() => setSelectedConsumable(null)} className="text-white/70 hover:text-white">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="flex items-center justify-center gap-6">
+                <button 
+                  onClick={() => setNewQuantity(Math.max(0, newQuantity - 1))}
+                  className="w-12 h-12 rounded-full border-2 border-gray-200 flex items-center justify-center text-2xl hover:bg-gray-50"
+                >-</button>
+                <input 
+                  type="number" 
+                  value={newQuantity}
+                  onChange={(e) => setNewQuantity(Number(e.target.value))}
+                  className="w-20 text-center text-2xl font-bold focus:outline-none"
+                />
+                <button 
+                  onClick={() => setNewQuantity(newQuantity + 1)}
+                  className="w-12 h-12 rounded-full border-2 border-gray-200 flex items-center justify-center text-2xl hover:bg-gray-50"
+                >+</button>
+              </div>
+              <button
+                onClick={handleQuantityUpdate}
+                className="w-full py-3 bg-[#0a2e27] text-white rounded-xl font-semibold hover:bg-[#08241f] transition-colors"
+              >
+                Update Quantity
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: ADD ITEM */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
           <div className="bg-white w-full max-w-[500px] rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
