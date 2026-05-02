@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { SidebarNavigationSection } from "../components/SidebarNavigationSection";
-import { X, Info, CheckCircle2, AlertCircle, Wrench, Clock } from "lucide-react";
+import { X, Info, CheckCircle2, AlertCircle, Wrench, Clock, Layers } from "lucide-react";
 // Import the API services
 import { inventoryService } from "../services/InventoryServices";
 
@@ -14,6 +14,7 @@ interface InventoryItemData {
   quantity: number;
   unit: string;
   location: string;
+  type?: "Consumable"; 
 }
 
 interface EquipmentAsset {
@@ -21,18 +22,20 @@ interface EquipmentAsset {
   assetId: string;
   name: string;
   condition: "Working" | "Damaged" | "Need Repair" | "Under Repair";
-  area: string; // Matches 'area' field in your database
+  area: string;
   purchaseDate: string;
+  type?: "Asset"; 
 }
 
 export const InventoryPage: React.FC = () => {
   const [consumables, setConsumables] = useState<InventoryItemData[]>([]);
   const [assets, setAssets] = useState<EquipmentAsset[]>([]);
+  const [summary, setSummary] = useState<(InventoryItemData | EquipmentAsset)[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [activeCategory, setActiveCategory] = useState<"Consumables" | "Assets">("Consumables");
+  const [activeCategory, setActiveCategory] = useState<"Consumables" | "Assets" | "All">("All");
 
   // --- Asset State ---
   const [selectedAsset, setSelectedAsset] = useState<EquipmentAsset | null>(null);
@@ -48,19 +51,22 @@ export const InventoryPage: React.FC = () => {
   const [formData, setFormData] = useState({
     name: "",
     quantity: "",
-    location: "", // Used for both location (consumables) and area (assets)
-    lowStockAlert: ""
+    location: "", 
+    lowStockAlert: "",
+    unit: ""
   });
 
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [assetsData, consumablesData] = await Promise.all([
+      const [assetsData, consumablesData, summaryData] = await Promise.all([
         inventoryService.fetchAssets(),
-        inventoryService.fetchConsumables()
+        inventoryService.fetchConsumables(),
+        inventoryService.fetchSummary()
       ]);
       setAssets(assetsData);
       setConsumables(consumablesData);
+      setSummary(summaryData);
     } catch (err: any) {
       console.error("Error fetching inventory:", err);
       setError(err.message);
@@ -113,6 +119,10 @@ export const InventoryPage: React.FC = () => {
     (asset.area && asset.area.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
+  const filteredSummary = summary.filter(item => 
+    item.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
   const handleAddItem = async () => {
     if (!formData.name) {
       alert("Please enter an item name");
@@ -125,9 +135,10 @@ export const InventoryPage: React.FC = () => {
       [isAsset ? 'assetId' : 'consumableId']: `${idPrefix}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`,
       name: formData.name,
       quantity: Number(formData.quantity) || 0,
-      category: activeCategory,
+      category: activeCategory === "All" ? "Consumables" : activeCategory,
       [isAsset ? 'area' : 'location']: formData.location,
       lowStockAlert: Number(formData.lowStockAlert) || 0,
+      unit: formData.unit || "pcs",
       condition: "Working",
       purchaseDate: new Date().toISOString(),
       isArchived: false
@@ -141,7 +152,7 @@ export const InventoryPage: React.FC = () => {
       }
 
       setIsModalOpen(false);
-      setFormData({ name: "", quantity: "", location: "", lowStockAlert: "" });
+      setFormData({ name: "", quantity: "", location: "", lowStockAlert: "", unit: "" });
       fetchData();
     } catch (err: any) {
       console.error("Network error:", err);
@@ -159,6 +170,27 @@ export const InventoryPage: React.FC = () => {
 
   const lowStockItems = consumables.filter(isLowStock);
   const outOfStockItems = consumables.filter(isOutOfStock);
+
+  // Helper for Asset Status Colors
+  const getAssetStatusColor = (condition: string) => {
+    switch (condition) {
+      case "Damaged": return "text-[#ff1a1a]"; 
+      case "Need Repair": return "text-[#ff9900]"; 
+      case "Under Repair": return "text-[#3385ff]"; 
+      case "Working": return "text-green-600";
+      default: return "text-gray-600";
+    }
+  };
+
+  const getAssetBadgeClass = (condition: string) => {
+    switch (condition) {
+      case "Damaged": return "bg-red-50 text-[#ff1a1a]";
+      case "Need Repair": return "bg-orange-50 text-[#ff9900]";
+      case "Under Repair": return "bg-blue-50 text-[#3385ff]";
+      case "Working": return "bg-green-50 text-green-700";
+      default: return "bg-gray-50 text-gray-700";
+    }
+  };
 
   return (
     <div className="flex h-screen bg-[#f4f5f6] overflow-hidden relative">
@@ -186,17 +218,17 @@ export const InventoryPage: React.FC = () => {
             <div className="mb-4 p-4 bg-red-100 text-red-700 rounded-xl">Error: {error}</div>
           )}
 
-          {activeCategory === "Consumables" && (lowStockItems.length > 0 || outOfStockItems.length > 0) && (
+          {activeCategory !== "Assets" && (lowStockItems.length > 0 || outOfStockItems.length > 0) && (
             <div className="mb-6 flex items-start gap-4 p-4 bg-[#fff5f5] border border-[#feb2b2] rounded-xl animate-in fade-in slide-in-from-top-4 duration-300">
               <div className="p-2 bg-red-100 rounded-lg">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#e53e3e" strokeWidth="2">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ff1a1a" strokeWidth="2">
                   <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
                   <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
                 </svg>
               </div>
               <div>
-                <h3 className="font-bold text-[#c53030] text-lg">Inventory Alert</h3>
-                <p className="text-[#e53e3e] text-sm">
+                <h3 className="font-bold text-[#ff1a1a] text-lg">Inventory Alert</h3>
+                <p className="text-[#ff1a1a] text-sm">
                   {outOfStockItems.length} out of stock and {lowStockItems.length} low stock items.
                 </p>
               </div>
@@ -208,36 +240,60 @@ export const InventoryPage: React.FC = () => {
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
                 <h2 className="text-xl md:text-2xl font-semibold text-[#1f1f1f]">Inventory Overview</h2>
                 
-                <div className="flex gap-6">
-                  {activeCategory === "Consumables" ? (
-                    <>
-                      <div className="text-center">
-                        <div className="text-red-500 font-bold text-lg leading-none">{outOfStockItems.length}</div>
-                        <div className="text-[10px] text-[#6b6b6b] uppercase font-bold">Out of Stock</div>
+                <div className="flex gap-12">
+                  {activeCategory === "All" ? (
+                    <div className="flex flex-col items-center">
+                      <div className="text-[#0a2e27] font-bold text-2xl leading-none mb-1">
+                        {assets.length + consumables.length}
                       </div>
-                      <div className="text-center">
-                        <div className="text-orange-400 font-bold text-lg leading-none">{lowStockItems.length}</div>
-                        <div className="text-[10px] text-[#6b6b6b] uppercase font-bold">Low Stock</div>
-                      </div>
-                    </>
+                      <div className="text-[10px] text-[#4a4a4a] uppercase font-bold whitespace-nowrap">Total Inventory</div>
+                    </div>
                   ) : (
                     <>
-                      {[
-                        { label: "Damaged", val: assets.filter(a => a.condition === "Damaged").length, color: "text-red-500" },
-                        { label: "Need Repair", val: assets.filter(a => a.condition === "Need Repair").length, color: "text-orange-400" },
-                        { label: "Under Repair", val: assets.filter(a => a.condition === "Under Repair").length, color: "text-blue-500" },
-                      ].map((stat, i) => (
-                        <div key={i} className="text-center">
-                          <div className={`text-lg font-bold ${stat.color}`}>{stat.val}</div>
-                          <div className="text-[10px] text-gray-500 uppercase font-bold leading-tight">{stat.label}</div>
+                      {activeCategory === "Consumables" && (
+                        <div className="flex flex-col items-center">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">Consumables</span>
+                          <div className="flex gap-8">
+                            <div className="text-center">
+                              <div className="text-[#ff1a1a] font-bold text-xl leading-none mb-1">{outOfStockItems.length}</div>
+                              <div className="text-[10px] text-[#4a4a4a] uppercase font-bold whitespace-nowrap">Out of Stock</div>
+                            </div>
+                            <div className="text-center">
+                              <div className="text-[#ff9900] font-bold text-xl leading-none mb-1">{lowStockItems.length}</div>
+                              <div className="text-[10px] text-[#4a4a4a] uppercase font-bold whitespace-nowrap">Low Stock</div>
+                            </div>
+                          </div>
                         </div>
-                      ))}
+                      )}
+                      {activeCategory === "Assets" && (
+                        <div className="flex flex-col items-center">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">Assets</span>
+                          <div className="flex gap-8">
+                            {[
+                              { label: "Damaged", val: assets.filter(a => a.condition === "Damaged").length, color: "text-[#ff1a1a]" },
+                              { label: "Need Repair", val: assets.filter(a => a.condition === "Need Repair").length, color: "text-[#ff9900]" },
+                              { label: "Under Repair", val: assets.filter(a => a.condition === "Under Repair").length, color: "text-[#3385ff]" },
+                            ].map((stat, i) => (
+                              <div key={i} className="text-center">
+                                <div className={`text-xl font-bold mb-1 ${stat.color}`}>{stat.val}</div>
+                                <div className="text-[10px] text-[#4a4a4a] uppercase font-bold whitespace-nowrap leading-tight">{stat.label}</div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </>
                   )}
                 </div>
               </div>
 
               <div className="flex gap-2 mb-6">
+                <button
+                  onClick={() => setActiveCategory("All")}
+                  className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${activeCategory === "All" ? "bg-[#0a2e27] text-white" : "bg-[#d1d1d1] text-[#6b6b6b]"}`}
+                >
+                  All Items
+                </button>
                 <button
                   onClick={() => setActiveCategory("Consumables")}
                   className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${activeCategory === "Consumables" ? "bg-[#0a2e27] text-white" : "bg-[#d1d1d1] text-[#6b6b6b]"}`}
@@ -253,7 +309,7 @@ export const InventoryPage: React.FC = () => {
               </div>
 
               <h3 className="text-lg font-semibold mb-4 text-[#1f1f1f]">
-                {activeCategory === "Consumables" ? "Maintenance Supplies" : "Equipment Assets"}
+                {activeCategory === "Consumables" ? "Maintenance Supplies" : activeCategory === "Assets" ? "Equipment Assets" : "Full Inventory"}
               </h3>
 
               <div className="flex flex-col md:flex-row gap-3 mb-6">
@@ -268,18 +324,59 @@ export const InventoryPage: React.FC = () => {
                     onChange={(e) => setSearchQuery(e.target.value)}
                   />
                 </div>
-                <button
-                  onClick={() => setIsModalOpen(true)}
-                  className="bg-[#0a2e27] text-white px-6 py-3 rounded-xl flex items-center justify-center gap-2 font-medium text-sm hover:bg-[#08241f] transition-colors"
-                >
-                  <span className="text-lg">+</span> Add Item
-                </button>
+                {activeCategory !== "All" && (
+                  <button
+                    onClick={() => setIsModalOpen(true)}
+                    className="bg-[#0a2e27] text-white px-6 py-3 rounded-xl flex items-center justify-center gap-2 font-medium text-sm hover:bg-[#08241f] transition-colors"
+                  >
+                    <span className="text-lg">+</span> Add Item
+                  </button>
+                )}
               </div>
 
               <div className="max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
                 <div className="space-y-3">
                   {loading ? (
                     <div className="py-10 text-center text-gray-400 animate-pulse">Loading items...</div>
+                  ) : activeCategory === "All" ? (
+                    filteredSummary.length > 0 ? (
+                        filteredSummary.map((item: any) => {
+                            const isAsset = item.type === 'Asset';
+                            return (
+                                <div
+                                  key={item._id}
+                                  onClick={() => {
+                                    if (isAsset) setSelectedAsset(item);
+                                    else {
+                                        setSelectedConsumable(item);
+                                        setNewQuantity(item.quantity);
+                                    }
+                                  }}
+                                  className="flex items-center justify-between p-4 bg-white border border-[#e8e8e8] rounded-xl hover:shadow-md transition-all cursor-pointer group mb-3"
+                                >
+                                  <div className="flex items-center gap-3 md:gap-4 min-w-0">
+                                    <div className="w-10 h-10 flex items-center justify-center rounded-lg bg-[#f4f5f6] group-hover:bg-[#0a2e27] transition-colors">
+                                      {isAsset ? (
+                                          <Wrench size={18} className="text-[#6b6b6b] group-hover:text-white" />
+                                      ) : (
+                                          <Layers size={18} className="text-[#6b6b6b] group-hover:text-white" />
+                                      )}
+                                    </div>
+                                    <div className="truncate">
+                                      <h4 className="font-semibold text-base md:text-lg truncate text-[#1f1f1f] group-hover:text-[#0a2e27]">
+                                          {item.name}
+                                      </h4>
+                                      <p className="text-xs md:text-sm text-[#6b6b6b] truncate">
+                                          {isAsset ? `ID: ${item.assetId} • ${item.area || "Unassigned"}` : `ID: ${item.consumableId} • Category: ${item.category || "Consumables"}`}
+                                      </p>
+                                    </div>
+                                  </div>
+                                </div>
+                            );
+                        })
+                    ) : (
+                        <div className="py-10 text-center text-gray-400 border-2 border-dashed border-gray-100 rounded-xl">No items found.</div>
+                    )
                   ) : activeCategory === "Consumables" ? (
                     filteredConsumables.length > 0 ? (
                       filteredConsumables.map((item) => {
@@ -292,28 +389,28 @@ export const InventoryPage: React.FC = () => {
                               setSelectedConsumable(item);
                               setNewQuantity(item.quantity);
                             }}
-                            className={`flex items-center justify-between p-4 bg-white border rounded-xl hover:shadow-md transition-all cursor-pointer group ${(low || out) ? "border-[#feb2b2] shadow-[0_0_10px_rgba(254,178,178,0.2)]" : "border-[#e8e8e8]"}`}
+                            className={`flex items-center justify-between p-4 bg-white border rounded-xl hover:shadow-md transition-all cursor-pointer group mb-3 ${out ? "border-[#ff1a1a]" : low ? "border-[#ff9900]" : "border-[#e8e8e8]"}`}
                           >
                             <div className="flex items-center gap-3 md:gap-4 min-w-0">
-                              <div className={`w-10 h-10 flex items-center justify-center rounded-lg shrink-0 ${(low || out) ? "bg-[#fff5f5]" : "bg-[#f4f5f6]"}`}>
-                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={(low || out) ? "#e53e3e" : "#6b6b6b"} strokeWidth="2">
-                                  <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
-                                </svg>
+                              <div className={`w-10 h-10 flex items-center justify-center rounded-lg transition-colors ${out ? "bg-red-50" : low ? "bg-orange-50" : "bg-[#f4f5f6] group-hover:bg-[#0a2e27]"}`}>
+                                <Layers size={18} className={`transition-colors ${out ? "text-[#ff1a1a]" : low ? "text-[#ff9900]" : "text-[#6b6b6b] group-hover:text-white"}`} />
                               </div>
                               <div className="truncate">
                                 <div className="flex items-center gap-2">
-                                  <h4 className={`font-semibold text-base md:text-lg truncate ${(low || out) ? "text-[#c53030]" : "text-[#1f1f1f]"}`}>{item.name}</h4>
+                                  <h4 className={`font-semibold text-base md:text-lg truncate ${out ? "text-[#ff1a1a]" : low ? "text-[#ff9900]" : "text-[#1f1f1f] group-hover:text-[#0a2e27]"}`}>{item.name}</h4>
                                   {out ? (
-                                    <span className="px-2 py-0.5 bg-red-600 text-white text-[10px] font-bold rounded uppercase">Out of Stock</span>
+                                    <span className="px-2 py-0.5 bg-[#ff1a1a] text-white text-[10px] font-bold rounded uppercase">Out of Stock</span>
                                   ) : low ? (
-                                    <span className="px-2 py-0.5 bg-[#fff5f5] text-[#e53e3e] text-[10px] font-bold rounded uppercase">Low Stock</span>
+                                    <span className="px-2 py-0.5 bg-orange-50 text-[#ff9900] text-[10px] font-bold rounded uppercase">Low Stock</span>
                                   ) : null}
                                 </div>
-                                <p className="text-xs md:text-sm text-[#6b6b6b] truncate">Category: {item.category || "Uncategorized"} • Min: {item.lowStockAlert}</p>
+                                <p className="text-xs md:text-sm text-[#6b6b6b] truncate">
+                                  ID: {item.consumableId} • Min: {item.lowStockAlert}
+                                </p>
                               </div>
                             </div>
                             <div className="text-right shrink-0 ml-4">
-                              <div className={`text-xl md:text-2xl font-bold ${(low || out) ? "text-[#c53030]" : "text-[#1f1f1f]"}`}>{item.quantity}</div>
+                              <div className={`text-xl md:text-2xl font-bold ${out ? "text-[#ff1a1a]" : low ? "text-[#ff9900]" : "text-[#1f1f1f]"}`}>{item.quantity}</div>
                               <div className="text-[10px] text-[#6b6b6b] uppercase tracking-wider font-bold">{item.unit || "pcs"}</div>
                             </div>
                           </div>
@@ -328,20 +425,19 @@ export const InventoryPage: React.FC = () => {
                         <div
                           key={asset._id}
                           onClick={() => setSelectedAsset(asset)}
-                          className="flex items-center justify-between p-4 bg-white border border-[#e8e8e8] rounded-xl hover:shadow-md transition-all cursor-pointer group mb-3"
+                          className={`flex items-center justify-between p-4 bg-white border rounded-xl hover:shadow-md transition-all cursor-pointer group mb-3 ${asset.condition === "Damaged" ? "border-[#ff1a1a]" : asset.condition === "Need Repair" ? "border-[#ff9900]" : asset.condition === "Under Repair" ? "border-[#3385ff]" : "border-[#e8e8e8]"}`}
                         >
                           <div className="flex items-center gap-3 md:gap-4 min-w-0">
                             <div className="w-10 h-10 flex items-center justify-center rounded-lg bg-[#f4f5f6] group-hover:bg-[#0a2e27] transition-colors">
-                              <svg className="group-hover:stroke-white transition-colors" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6b6b6b" strokeWidth="2"><path d="M20 7h-9m3 10h5M3 7h2m4 0h2m0 10H3m8-10v10M7 7v10" /></svg>
+                              <Wrench size={18} className={`transition-colors ${getAssetStatusColor(asset.condition)} group-hover:text-white`} />
                             </div>
                             <div className="truncate">
-                              <h4 className="font-semibold text-base md:text-lg text-[#1f1f1f] truncate group-hover:text-[#0a2e27]">{asset.name}</h4>
-                              {/* Using .area from your MongoDB schema */}
+                              <h4 className={`font-semibold text-base md:text-lg truncate group-hover:text-[#0a2e27] ${getAssetStatusColor(asset.condition)}`}>{asset.name}</h4>
                               <p className="text-xs md:text-sm text-[#6b6b6b]">ID: {asset.assetId} • {asset.area || "Unassigned"}</p>
                             </div>
                           </div>
                           <div className="text-right">
-                            <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase ${asset.condition === 'Working' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                            <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase ${getAssetBadgeClass(asset.condition)}`}>
                               {asset.condition}
                             </span>
                           </div>
@@ -375,9 +471,9 @@ export const InventoryPage: React.FC = () => {
               <p className="text-sm font-semibold text-gray-600 mb-2">Update Equipment Condition:</p>
               {[
                 { label: "Working", icon: <CheckCircle2 className="text-green-600" size={18}/>, bg: "hover:bg-green-50" },
-                { label: "Damaged", icon: <AlertCircle className="text-red-600" size={18}/>, bg: "hover:bg-red-50" },
-                { label: "Need Repair", icon: <Wrench className="text-orange-500" size={18}/>, bg: "hover:bg-orange-50" },
-                { label: "Under Repair", icon: <Clock className="text-blue-500" size={18}/>, bg: "hover:bg-blue-50" }
+                { label: "Damaged", icon: <AlertCircle className="text-[#ff1a1a]" size={18}/>, bg: "hover:bg-red-50" },
+                { label: "Need Repair", icon: <Wrench className="text-[#ff9900]" size={18}/>, bg: "hover:bg-orange-50" },
+                { label: "Under Repair", icon: <Clock className="text-[#3385ff]" size={18}/>, bg: "hover:bg-blue-50" }
               ].map((option) => (
                 <button
                   key={option.label}
@@ -490,17 +586,30 @@ export const InventoryPage: React.FC = () => {
                 </div>
               </div>
 
-              {activeCategory === "Consumables" && (
-                <div className="space-y-1 animate-in fade-in slide-in-from-top-2 duration-200">
-                  <label className="text-sm font-semibold text-gray-700">Minimum Quantity</label>
-                  <input
-                    name="lowStockAlert"
-                    value={formData.lowStockAlert}
-                    onChange={handleInputChange}
-                    type="number"
-                    placeholder="10"
-                    className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-[#0a2e27]"
-                  />
+              {(activeCategory === "Consumables" || activeCategory === "All") && (
+                <div className="grid grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2 duration-200">
+                  <div className="space-y-1">
+                    <label className="text-sm font-semibold text-gray-700">Minimum Quantity</label>
+                    <input
+                      name="lowStockAlert"
+                      value={formData.lowStockAlert}
+                      onChange={handleInputChange}
+                      type="number"
+                      placeholder="10"
+                      className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-[#0a2e27]"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-sm font-semibold text-gray-700">Unit</label>
+                    <input
+                      name="unit"
+                      value={formData.unit}
+                      onChange={handleInputChange}
+                      type="text"
+                      placeholder="e.g. pcs, kg, box"
+                      className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-[#0a2e27]"
+                    />
+                  </div>
                 </div>
               )}
 
@@ -527,7 +636,7 @@ export const InventoryPage: React.FC = () => {
                   <p className="font-bold text-gray-700">Make sure to:</p>
                   <ul className="list-disc list-inside space-y-0.5">
                     <li>Double-check the item details before adding</li>
-                    {activeCategory === "Consumables" && <li>Set appropriate minimum quantity for reorder alerts</li>}
+                    {(activeCategory === "Consumables" || activeCategory === "All") && <li>Set appropriate minimum quantity for reorder alerts</li>}
                   </ul>
                 </div>
               </div>

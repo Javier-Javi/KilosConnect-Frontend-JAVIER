@@ -48,8 +48,10 @@ async function startServer() {
 
     // ─── ASSET ROUTES ───
     app.get("/api/assets", async (req, res) => {
-      const assets = await Asset.find();
-      res.json(assets);
+      try {
+        const assets = await Asset.find();
+        res.json(assets);
+      } catch (err) { res.status(500).json({ error: err.message }); }
     });
 
     app.post("/api/assets", async (req, res) => {
@@ -61,14 +63,18 @@ async function startServer() {
     });
 
     app.patch("/api/assets/:id", async (req, res) => {
-      const asset = await Asset.findByIdAndUpdate(req.params.id, req.body, { new: true });
-      res.json(asset);
+      try {
+        const asset = await Asset.findByIdAndUpdate(req.params.id, req.body, { new: true });
+        res.json(asset);
+      } catch (err) { res.status(400).json({ error: err.message }); }
     });
 
     // ─── CONSUMABLE ROUTES ───
     app.get("/api/consumables", async (req, res) => {
-      const consumables = await Consumable.find();
-      res.json(consumables);
+      try {
+        const consumables = await Consumable.find();
+        res.json(consumables);
+      } catch (err) { res.status(500).json({ error: err.message }); }
     });
 
     app.post("/api/consumables", async (req, res) => {
@@ -84,6 +90,30 @@ async function startServer() {
         const consumable = await Consumable.findByIdAndUpdate(req.params.id, req.body, { new: true });
         res.json(consumable);
       } catch (err) { res.status(400).json({ error: err.message }); }
+    });
+
+    // ─── SUMMARY ROUTE (The one causing the error) ───
+    app.get("/api/inventory/summary", async (req, res) => {
+      try {
+        const [assets, consumables] = await Promise.all([
+          Asset.find(),
+          Consumable.find()
+        ]);
+        
+        // Combine and tag them so the frontend can distinguish styles
+        const combined = [
+          ...assets.map(a => ({ ...a.toObject(), type: 'Asset' })),
+          ...consumables.map(c => ({ ...c.toObject(), type: 'Consumable' }))
+        ];
+
+        // Sort alphabetically by name
+        combined.sort((a, b) => a.name.localeCompare(b.name));
+        
+        res.json(combined);
+      } catch (err) {
+        console.error("Summary error:", err);
+        res.status(500).json({ error: "Could not compile inventory summary" });
+      }
     });
 
     app.listen(5000, () => console.log("🚀 Server running on port 5000"));

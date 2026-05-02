@@ -9,6 +9,12 @@ export const inventoryService = {
     return res.json();
   },
 
+  fetchSummary: async () => {
+    const res = await fetch(`${BASE_URL}/inventory/summary`);
+    if (!res.ok) throw new Error("Failed to fetch inventory summary");
+    return res.json();
+  },
+  
   fetchConsumables: async () => {
     const res = await fetch(`${BASE_URL}/consumables`);
     if (!res.ok) throw new Error("Failed to fetch consumables");
@@ -56,5 +62,8 @@ export const inventoryService = {
     return response.json();
   },
 };
+
 export const fetchAssets = inventoryService.fetchAssets;
 export const fetchConsumables = inventoryService.fetchConsumables;
+// Included change to fix "is not a function" error
+export const fetchSummary = inventoryService.fetchSummary;
