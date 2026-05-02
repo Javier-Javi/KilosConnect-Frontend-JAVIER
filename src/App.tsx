@@ -8,7 +8,7 @@ import { LostAndFoundPage } from './pages/LostAndFound'
 import { IncidentReportPage } from './pages/IncidentReport'
 
 function App() {
-  return <DashboardPage/>
+  return <InventoryPage/>
 }
 
 export default App

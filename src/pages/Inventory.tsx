@@ -35,6 +35,9 @@ export const InventoryPage: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [activeCategory, setActiveCategory] = useState<"Consumables" | "Assets">("Consumables");
 
+  // --- NEW: Search State ---
+  const [searchQuery, setSearchQuery] = useState("");
+
   // Form State
   const [formData, setFormData] = useState({
     name: "",
@@ -69,25 +72,58 @@ export const InventoryPage: React.FC = () => {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
+  // --- Filter Logic for Search ---
+  const filteredConsumables = consumables.filter(item => 
+    item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (item.location && item.location.toLowerCase().includes(searchQuery.toLowerCase()))
+  );
+
+  const filteredAssets = assets.filter(asset => 
+    asset.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    asset.assetId.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (asset.location && asset.location.toLowerCase().includes(searchQuery.toLowerCase()))
+  );
+
   const handleAddItem = async () => {
+    if (!formData.name) {
+      alert("Please enter an item name");
+      return;
+    }
+
+    const isAsset = activeCategory === "Assets";
+    const endpoint = isAsset ? "assets" : "consumables";
+    const idPrefix = isAsset ? "AST" : "CON";
+
     try {
-      const response = await fetch("/api/inventory", {
+      const bodyData = {
+        [isAsset ? 'assetId' : 'consumableId']: `${idPrefix}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`,
+        name: formData.name,
+        quantity: Number(formData.quantity) || 0,
+        category: activeCategory,
+        [isAsset ? 'area' : 'location']: formData.location, 
+        lowStockAlert: Number(formData.lowStockAlert) || 0, 
+        condition: "Working",
+        purchaseDate: new Date().toISOString(),
+        isArchived: false
+      };
+
+      const response = await fetch(`http://localhost:5000/api/${endpoint}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...formData,
-          category: activeCategory,
-          unit: "pcs" 
-        }),
+        body: JSON.stringify(bodyData),
       });
 
       if (response.ok) {
         setIsModalOpen(false);
         setFormData({ name: "", quantity: "", location: "", lowStockAlert: "" });
-        fetchData();
+        fetchData(); 
+      } else {
+        const errorData = await response.json();
+        alert(`Failed to add: ${errorData.error || "Check console"}`);
       }
     } catch (error) {
-      console.error("Error adding item:", error);
+      console.error("Network error:", error);
+      alert("Could not connect to the server.");
     }
   };
 
@@ -179,7 +215,13 @@ export const InventoryPage: React.FC = () => {
                   <span className="absolute left-4 top-1/2 -translate-y-1/2">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6b6b6b" strokeWidth="2"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" /></svg>
                   </span>
-                  <input className="w-full pl-11 pr-4 py-3 rounded-xl border border-[#e8e8e8] focus:outline-none focus:border-[#0a2e27] transition-colors" placeholder="Search items..." />
+                  {/* --- CONNECTED: Search Input --- */}
+                  <input 
+                    className="w-full pl-11 pr-4 py-3 rounded-xl border border-[#e8e8e8] focus:outline-none focus:border-[#0a2e27] transition-colors" 
+                    placeholder="Search items..." 
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                  />
                 </div>
                 <button 
                   onClick={() => setIsModalOpen(true)}
@@ -193,8 +235,8 @@ export const InventoryPage: React.FC = () => {
                 {loading ? (
                   <div className="py-10 text-center text-gray-400 animate-pulse">Loading items...</div>
                 ) : activeCategory === "Consumables" ? (
-                  consumables.length > 0 ? (
-                    consumables.map((item) => {
+                  filteredConsumables.length > 0 ? (
+                    filteredConsumables.map((item) => {
                       const low = isLowStock(item);
                       return (
                         <div key={item._id} className={`flex items-center justify-between p-4 bg-white border rounded-xl hover:shadow-md transition-all ${low ? "border-[#feb2b2] shadow-[0_0_10px_rgba(254,178,178,0.2)]" : "border-[#e8e8e8]"}`}>
@@ -223,8 +265,8 @@ export const InventoryPage: React.FC = () => {
                     <div className="py-10 text-center text-gray-400 border-2 border-dashed border-gray-100 rounded-xl">No consumables found.</div>
                   )
                 ) : (
-                  assets.length > 0 ? (
-                    assets.map((asset) => (
+                  filteredAssets.length > 0 ? (
+                    filteredAssets.map((asset) => (
                       <div key={asset._id} className="flex items-center justify-between p-4 bg-white border border-[#e8e8e8] rounded-xl hover:shadow-md transition-all">
                         <div className="flex items-center gap-3 md:gap-4 min-w-0">
                           <div className="w-10 h-10 flex items-center justify-center rounded-lg bg-[#f4f5f6]">
@@ -249,6 +291,7 @@ export const InventoryPage: React.FC = () => {
               </div>
             </div>
 
+            {/* Sidebar Stats */}
             <div className="w-full lg:w-[320px] bg-white rounded-3xl p-6 border border-[#e8e8e8] shadow-sm shrink-0">
               <div className="grid grid-cols-4 gap-2 mb-8 border-b pb-6">
                 {[
@@ -281,7 +324,7 @@ export const InventoryPage: React.FC = () => {
         </div>
       </div>
 
-      {/* RESTORED EXACT MODAL FROM SCREENSHOT */}
+      {/* MODAL */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
           <div className="bg-white w-full max-w-[500px] rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
@@ -340,17 +383,19 @@ export const InventoryPage: React.FC = () => {
                 </div>
               </div>
 
-              <div className="space-y-1">
-                <label className="text-sm font-semibold text-gray-700">Minimum Quantity</label>
-                <input 
-                  name="lowStockAlert"
-                  value={formData.lowStockAlert}
-                  onChange={handleInputChange}
-                  type="number"
-                  placeholder="10"
-                  className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-[#0a2e27]"
-                />
-              </div>
+              {activeCategory === "Consumables" && (
+                <div className="space-y-1 animate-in fade-in slide-in-from-top-2 duration-200">
+                  <label className="text-sm font-semibold text-gray-700">Minimum Quantity</label>
+                  <input 
+                    name="lowStockAlert"
+                    value={formData.lowStockAlert}
+                    onChange={handleInputChange}
+                    type="number"
+                    placeholder="10"
+                    className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-[#0a2e27]"
+                  />
+                </div>
+              )}
 
               <div className="space-y-1">
                 <label className="text-sm font-semibold text-gray-700">Category <span className="text-red-500">*</span></label>
@@ -376,7 +421,7 @@ export const InventoryPage: React.FC = () => {
                   <p className="font-bold text-gray-700">Make sure to:</p>
                   <ul className="list-disc list-inside space-y-0.5">
                     <li>Double-check the item details before adding</li>
-                    <li>Set appropriate minimum quantity for reorder alerts</li>
+                    {activeCategory === "Consumables" && <li>Set appropriate minimum quantity for reorder alerts</li>}
                     <li>Use consistent naming (e.g., "Zone: Area Name")</li>
                   </ul>
                 </div>

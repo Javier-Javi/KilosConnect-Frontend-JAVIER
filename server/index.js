@@ -3,10 +3,10 @@ import cors from "cors";
 import mongoose from "mongoose";
 import dotenv from "dotenv";
 
-// Import your specific controllers
-import { getAllAssets } from "./controllers/assetController.js";
-import { getAllConsumables } from "./controllers/consumablesController.js";
+// 1. Update these imports to include the "create" functions from your controllers
 
+import { getAllConsumables, createConsumable } from "./controllers/consumablesController.js";
+import { getAllAssets, createAsset } from "./controllers/assetController.js";
 dotenv.config();
 
 const app = express();
@@ -19,10 +19,17 @@ async function startServer() {
     await mongoose.connect(process.env.KILOS_DATABASE_URI);
     console.log("✅ Connected to MongoDB via Mongoose");
 
-    // ─── ROUTES LINKED TO YOUR CONTROLLERS ────────────────
-    // These routes will now use the logic seen in your images
+    // ─── ROUTES ──────────────────────────────────────────
+    
+    // Asset Routes
     app.get("/api/assets", getAllAssets);
+    
+    // Consumable Routes
     app.get("/api/consumables", getAllConsumables);
+    
+    // 2. Add this POST route to handle adding new items
+    app.post("/api/consumables", createConsumable);
+    app.post("/api/assets", createAsset);
 
     app.listen(5000, () => console.log("🚀 Server running on port 5000"));
   } catch (err) {
@@ -32,7 +39,3 @@ async function startServer() {
 }
 
 startServer();
-
-
-
-
