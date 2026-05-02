@@ -1,55 +1,102 @@
 import React, { useState, useEffect } from "react";
 import { SidebarNavigationSection } from "../components/SidebarNavigationSection";
 import { X, Info } from "lucide-react";
+// Import the API services
+// @ts-ignore
+import { fetchAssets, fetchConsumables } from "../services/api";
 
-// --- Types for MongoDB Data ---
+// --- Types updated to match MongoDB Models ---
 interface InventoryItemData {
   _id: string;
+  consumableId: string;
   name: string;
   category: string;
-  minStock: string; 
-  currentCount: number;
+  lowStockAlert: number; 
+  quantity: number;
   unit: string;
+  location: string;
 }
 
 interface EquipmentAsset {
   _id: string;
-  code: string;
+  assetId: string;
   name: string;
-  count: number;
-  status: "Working" | "Damaged" | "Under Repair";
-  zone: string;
+  condition: "working" | "damaged" | "need repair" | "under repair";
+  location: string;
+  purchaseDate: string;
 }
 
 export const InventoryPage: React.FC = () => {
   const [consumables, setConsumables] = useState<InventoryItemData[]>([]);
   const [assets, setAssets] = useState<EquipmentAsset[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   
-  // State for Add Item Modal
   const [isModalOpen, setIsModalOpen] = useState(false);
-  // State to handle clicking between Consumables and Assets
   const [activeCategory, setActiveCategory] = useState<"Consumables" | "Assets">("Consumables");
 
+  // Form State
+  const [formData, setFormData] = useState({
+    name: "",
+    quantity: "",
+    location: "",
+    lowStockAlert: ""
+  });
+
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      const [assetsData, consumablesData] = await Promise.all([
+        fetchAssets(),
+        fetchConsumables()
+      ]);
+      setAssets(assetsData);
+      setConsumables(consumablesData);
+    } catch (err: any) {
+      console.error("Error fetching inventory:", err);
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        setLoading(false);
-      } catch (error) {
-        console.error("Error fetching inventory:", error);
-        setLoading(false);
-      }
-    };
     fetchData();
   }, []);
 
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleAddItem = async () => {
+    try {
+      const response = await fetch("/api/inventory", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...formData,
+          category: activeCategory,
+          unit: "pcs" 
+        }),
+      });
+
+      if (response.ok) {
+        setIsModalOpen(false);
+        setFormData({ name: "", quantity: "", location: "", lowStockAlert: "" });
+        fetchData();
+      }
+    } catch (error) {
+      console.error("Error adding item:", error);
+    }
+  };
+
   const isLowStock = (item: InventoryItemData) => {
-    const minVal = parseInt(item.minStock.replace(/[^0-9]/g, ""));
-    return item.currentCount < minVal;
+    return item.quantity <= (item.lowStockAlert || 0);
   };
 
   const lowStockItems = consumables.filter(isLowStock);
-  const outOfStockItems = consumables.filter(item => item.currentCount === 0);
+  const outOfStockItems = consumables.filter(item => item.quantity === 0);
 
   return (
     <div className="flex h-screen bg-[#f4f5f6] overflow-hidden relative">
@@ -73,6 +120,10 @@ export const InventoryPage: React.FC = () => {
         </header>
 
         <div className="px-4 md:px-8 pb-8">
+          {error && (
+            <div className="mb-4 p-4 bg-red-100 text-red-700 rounded-xl">Error: {error}</div>
+          )}
+
           {lowStockItems.length > 0 && (
             <div className="mb-6 flex items-start gap-4 p-4 bg-[#fff5f5] border border-[#feb2b2] rounded-xl animate-in fade-in slide-in-from-top-4 duration-300">
               <div className="p-2 bg-red-100 rounded-lg">
@@ -83,9 +134,7 @@ export const InventoryPage: React.FC = () => {
               </div>
               <div>
                 <h3 className="font-bold text-[#c53030] text-lg">Low Stock Alert</h3>
-                <p className="text-[#e53e3e] text-sm">
-                  {lowStockItems.length} items are below minimum stock level in Maintenance Storage
-                </p>
+                <p className="text-[#e53e3e] text-sm">{lowStockItems.length} items are below minimum stock level</p>
               </div>
             </div>
           )}
@@ -107,11 +156,23 @@ export const InventoryPage: React.FC = () => {
               </div>
 
               <div className="flex gap-2 mb-6">
-                <button className="px-4 py-1.5 rounded-lg bg-[#0a2e27] text-white text-sm font-medium transition-all">Consumables</button>
-                <button className="px-4 py-1.5 rounded-lg bg-[#d1d1d1] text-[#6b6b6b] text-sm font-medium hover:bg-gray-300 transition-all">Assets</button>
+                <button 
+                  onClick={() => setActiveCategory("Consumables")}
+                  className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${activeCategory === "Consumables" ? "bg-[#0a2e27] text-white" : "bg-[#d1d1d1] text-[#6b6b6b]"}`}
+                >
+                  Consumables
+                </button>
+                <button 
+                  onClick={() => setActiveCategory("Assets")}
+                  className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${activeCategory === "Assets" ? "bg-[#0a2e27] text-white" : "bg-[#d1d1d1] text-[#6b6b6b]"}`}
+                >
+                  Assets
+                </button>
               </div>
 
-              <h3 className="text-lg font-semibold mb-4 text-[#1f1f1f]">Maintenance Supplies</h3>
+              <h3 className="text-lg font-semibold mb-4 text-[#1f1f1f]">
+                {activeCategory === "Consumables" ? "Maintenance Supplies" : "Equipment Assets"}
+              </h3>
 
               <div className="flex flex-col md:flex-row gap-3 mb-6">
                 <div className="relative flex-1">
@@ -131,49 +192,59 @@ export const InventoryPage: React.FC = () => {
               <div className="space-y-3">
                 {loading ? (
                   <div className="py-10 text-center text-gray-400 animate-pulse">Loading items...</div>
-                ) : consumables.length > 0 ? (
-                  consumables.map((item) => {
-                    const low = isLowStock(item);
-                    return (
-                      <div 
-                        key={item._id} 
-                        className={`flex items-center justify-between p-4 bg-white border rounded-xl hover:shadow-md transition-all ${
-                          low ? "border-[#feb2b2] shadow-[0_0_10px_rgba(254,178,178,0.2)]" : "border-[#e8e8e8]"
-                        }`}
-                      >
+                ) : activeCategory === "Consumables" ? (
+                  consumables.length > 0 ? (
+                    consumables.map((item) => {
+                      const low = isLowStock(item);
+                      return (
+                        <div key={item._id} className={`flex items-center justify-between p-4 bg-white border rounded-xl hover:shadow-md transition-all ${low ? "border-[#feb2b2] shadow-[0_0_10px_rgba(254,178,178,0.2)]" : "border-[#e8e8e8]"}`}>
+                          <div className="flex items-center gap-3 md:gap-4 min-w-0">
+                            <div className={`w-10 h-10 flex items-center justify-center rounded-lg shrink-0 ${low ? "bg-[#fff5f5]" : "bg-[#f4f5f6]"}`}>
+                              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={low ? "#e53e3e" : "#6b6b6b"} strokeWidth="2">
+                                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+                              </svg>
+                            </div>
+                            <div className="truncate">
+                              <div className="flex items-center gap-2">
+                                <h4 className={`font-semibold text-base md:text-lg truncate ${low ? "text-[#c53030]" : "text-[#1f1f1f]"}`}>{item.name}</h4>
+                                {low && <span className="px-2 py-0.5 bg-[#fff5f5] text-[#e53e3e] text-[10px] font-bold rounded uppercase">Low Stock</span>}
+                              </div>
+                              <p className="text-xs md:text-sm text-[#6b6b6b] truncate">Category: {item.category || "Uncategorized"} • Min: {item.lowStockAlert}</p>
+                            </div>
+                          </div>
+                          <div className="text-right shrink-0 ml-4">
+                            <div className={`text-xl md:text-2xl font-bold ${low ? "text-[#c53030]" : "text-[#1f1f1f]"}`}>{item.quantity}</div>
+                            <div className="text-[10px] text-[#6b6b6b] uppercase tracking-wider font-bold">{item.unit || "pcs"}</div>
+                          </div>
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <div className="py-10 text-center text-gray-400 border-2 border-dashed border-gray-100 rounded-xl">No consumables found.</div>
+                  )
+                ) : (
+                  assets.length > 0 ? (
+                    assets.map((asset) => (
+                      <div key={asset._id} className="flex items-center justify-between p-4 bg-white border border-[#e8e8e8] rounded-xl hover:shadow-md transition-all">
                         <div className="flex items-center gap-3 md:gap-4 min-w-0">
-                          <div className={`w-10 h-10 flex items-center justify-center rounded-lg shrink-0 ${low ? "bg-[#fff5f5]" : "bg-[#f4f5f6]"}`}>
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={low ? "#e53e3e" : "#6b6b6b"} strokeWidth="2">
-                              <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
-                            </svg>
+                          <div className="w-10 h-10 flex items-center justify-center rounded-lg bg-[#f4f5f6]">
+                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6b6b6b" strokeWidth="2"><path d="M20 7h-9m3 10h5M3 7h2m4 0h2m0 10H3m8-10v10M7 7v10" /></svg>
                           </div>
                           <div className="truncate">
-                            <div className="flex items-center gap-2">
-                              <h4 className={`font-semibold text-base md:text-lg truncate ${low ? "text-[#c53030]" : "text-[#1f1f1f]"}`}>
-                                {item.name}
-                              </h4>
-                              {low && (
-                                <span className="px-2 py-0.5 bg-[#fff5f5] text-[#e53e3e] text-[10px] font-bold rounded uppercase">
-                                  Low Stock
-                                </span>
-                              )}
-                            </div>
-                            <p className="text-xs md:text-sm text-[#6b6b6b] truncate">Category: {item.category} • Min: {item.minStock}</p>
+                             <h4 className="font-semibold text-base md:text-lg text-[#1f1f1f] truncate">{asset.name}</h4>
+                             <p className="text-xs md:text-sm text-[#6b6b6b]">ID: {asset.assetId} • {asset.location}</p>
                           </div>
                         </div>
-                        <div className="text-right shrink-0 ml-4">
-                          <div className={`text-xl md:text-2xl font-bold ${low ? "text-[#c53030]" : "text-[#1f1f1f]"}`}>
-                            {item.currentCount}
-                          </div>
-                          <div className="text-[10px] text-[#6b6b6b] uppercase tracking-wider font-bold">{item.unit}</div>
+                        <div className="text-right">
+                          <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase ${asset.condition === 'working' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                            {asset.condition}
+                          </span>
                         </div>
                       </div>
-                    );
-                  })
-                ) : (
-                  <div className="py-10 text-center text-gray-400 border-2 border-dashed border-gray-100 rounded-xl">
-                    No items found in database.
-                  </div>
+                    ))
+                  ) : (
+                    <div className="py-10 text-center text-gray-400 border-2 border-dashed border-gray-100 rounded-xl">No assets found.</div>
+                  )
                 )}
               </div>
             </div>
@@ -182,9 +253,9 @@ export const InventoryPage: React.FC = () => {
               <div className="grid grid-cols-4 gap-2 mb-8 border-b pb-6">
                 {[
                   { label: "Total Assets", val: assets.length, color: "text-gray-900" },
-                  { label: "Damaged", val: assets.filter(a => a.status === "Damaged").length, color: "text-red-500" },
-                  { label: "Need Repair", val: 0, color: "text-orange-400" },
-                  { label: "Under Repair", val: assets.filter(a => a.status === "Under Repair").length, color: "text-blue-500" },
+                  { label: "Damaged", val: assets.filter(a => a.condition === "damaged").length, color: "text-red-500" },
+                  { label: "Need Repair", val: assets.filter(a => a.condition === "need repair").length, color: "text-orange-400" },
+                  { label: "Under Repair", val: assets.filter(a => a.condition === "under repair").length, color: "text-blue-500" },
                 ].map((stat, i) => (
                   <div key={i} className="text-center">
                     <div className={`text-lg font-bold ${stat.color}`}>{stat.val}</div>
@@ -193,15 +264,16 @@ export const InventoryPage: React.FC = () => {
                 ))}
               </div>
               <h3 className="text-lg font-semibold mb-6">Equipment by Zone</h3>
-              <div className="space-y-8">
-                {loading ? (
-                  <div className="space-y-4 animate-pulse">
-                    {[1, 2, 3].map(i => <div key={i} className="h-12 bg-gray-50 rounded-lg" />)}
-                  </div>
+              <div className="space-y-4">
+                {assets.length > 0 ? (
+                  Array.from(new Set(assets.map(a => a.location))).map(loc => (
+                    <div key={loc} className="flex justify-between items-center p-2 bg-gray-50 rounded-lg">
+                      <span className="text-sm font-medium text-gray-700">{loc || "Unassigned"}</span>
+                      <span className="text-sm font-bold text-[#0a2e27]">{assets.filter(a => a.location === loc).length}</span>
+                    </div>
+                  ))
                 ) : (
-                  <div className="text-center py-4 text-gray-400 text-sm italic">
-                    No equipment data available.
-                  </div>
+                  <div className="text-center py-4 text-gray-400 text-sm italic">No zone data available.</div>
                 )}
               </div>
             </div>
@@ -209,32 +281,30 @@ export const InventoryPage: React.FC = () => {
         </div>
       </div>
 
-      {/* --- ADD NEW ITEM MODAL --- */}
+      {/* RESTORED EXACT MODAL FROM SCREENSHOT */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
           <div className="bg-white w-full max-w-[500px] rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
-            {/* Modal Header */}
             <div className="bg-[#0a2e27] p-6 flex justify-between items-start">
               <div className="text-white">
                 <h2 className="text-xl font-bold">Add New Item</h2>
                 <p className="text-gray-300 text-xs mt-1">Fill in the details to add an item</p>
               </div>
-              <button 
-                onClick={() => setIsModalOpen(false)}
-                className="text-white/70 hover:text-white transition-colors"
-              >
+              <button onClick={() => setIsModalOpen(false)} className="text-white/70 hover:text-white transition-colors">
                 <X size={24} />
               </button>
             </div>
 
-            {/* Modal Body */}
             <div className="p-6 space-y-4">
               <div className="space-y-1">
                 <label className="text-sm font-semibold text-gray-700">Item Name <span className="text-red-500">*</span></label>
                 <input 
-                  type="text" 
+                  name="name"
+                  value={formData.name}
+                  onChange={handleInputChange}
+                  type="text"
                   placeholder="e.g. Magnesium Chalk"
-                  className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0a2e27]/20 focus:border-[#0a2e27]"
+                  className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-[#0a2e27]"
                 />
               </div>
 
@@ -242,22 +312,30 @@ export const InventoryPage: React.FC = () => {
                 <div className="space-y-1">
                   <label className="text-sm font-semibold text-gray-700">Current Quantity</label>
                   <input 
-                    type="number" 
+                    name="quantity"
+                    value={formData.quantity}
+                    onChange={handleInputChange}
+                    type="number"
                     placeholder="0"
-                    className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0a2e27]/20 focus:border-[#0a2e27]"
+                    className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-[#0a2e27]"
                   />
                 </div>
                 <div className="space-y-1">
                   <label className="text-sm font-semibold text-gray-700">Zone / Area</label>
-                  <select className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0a2e27]/20 focus:border-[#0a2e27] bg-white text-black text-sm">
+                  <select 
+                    name="location"
+                    value={formData.location}
+                    onChange={handleInputChange}
+                    className="w-full px-4 py-2 border border-gray-200 rounded-lg bg-white focus:outline-none focus:border-[#0a2e27]"
+                  >
                     <option value="">Select zone</option>
-                    <option value="mezzanine">Mezzanine</option>
-                    <option value="powerlifting-area">Powerlifting Area</option>
-                    <option value="open-wod-area">Open WOD Area</option>
-                    <option value="crossfit-area">CrossFit Area</option>
-                    <option value="cafe">Café</option>
-                    <option value="general-storage">General Storage Room</option>
-                    <option value="maintenance-storage">Maintenance & Asset Storage Room</option>
+                    <option value="Mezzanine">Mezzanine</option>
+                    <option value="Powerlifting Area">Powerlifting Area</option>
+                    <option value="Open WOD Area">Open WOD Area</option>
+                    <option value="CrossFit Area">CrossFit Area</option>
+                    <option value="Café">Café</option>
+                    <option value="General Storage">General Storage</option>
+                    <option value="Maintenance Storage">Maintenance Storage</option>
                   </select>
                 </div>
               </div>
@@ -265,32 +343,27 @@ export const InventoryPage: React.FC = () => {
               <div className="space-y-1">
                 <label className="text-sm font-semibold text-gray-700">Minimum Quantity</label>
                 <input 
-                  type="number" 
+                  name="lowStockAlert"
+                  value={formData.lowStockAlert}
+                  onChange={handleInputChange}
+                  type="number"
                   placeholder="10"
-                  className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0a2e27]/20 focus:border-[#0a2e27]"
+                  className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-[#0a2e27]"
                 />
               </div>
 
               <div className="space-y-1">
                 <label className="text-sm font-semibold text-gray-700">Category <span className="text-red-500">*</span></label>
-                <div className="grid grid-cols-2 gap-2 mt-1">
+                <div className="grid grid-cols-2 gap-2">
                   <button 
                     onClick={() => setActiveCategory("Consumables")}
-                    className={`py-2 rounded-lg font-medium text-sm transition-colors ${
-                      activeCategory === "Consumables" 
-                      ? "bg-[#0a2e27] text-white" 
-                      : "bg-white border border-gray-200 text-gray-600 hover:bg-gray-50"
-                    }`}
+                    className={`py-2 rounded-lg font-medium text-sm transition-colors ${activeCategory === "Consumables" ? "bg-[#0a2e27] text-white" : "bg-white border border-gray-200 text-gray-600"}`}
                   >
                     Consumables
                   </button>
                   <button 
                     onClick={() => setActiveCategory("Assets")}
-                    className={`py-2 rounded-lg font-medium text-sm transition-colors ${
-                      activeCategory === "Assets" 
-                      ? "bg-[#0a2e27] text-white" 
-                      : "bg-white border border-gray-200 text-gray-600 hover:bg-gray-50"
-                    }`}
+                    className={`py-2 rounded-lg font-medium text-sm transition-colors ${activeCategory === "Assets" ? "bg-[#0a2e27] text-white" : "bg-white border border-gray-200 text-gray-600"}`}
                   >
                     Assets
                   </button>
@@ -310,14 +383,12 @@ export const InventoryPage: React.FC = () => {
               </div>
             </div>
 
-            <div className="p-6 pt-0 flex gap-3">
+            <div className="p-6 pt-0 flex gap-3 mt-2">
+              <button onClick={() => setIsModalOpen(false)} className="flex-1 py-3 border border-gray-200 rounded-xl font-semibold text-gray-600 hover:bg-gray-50">Cancel</button>
               <button 
-                onClick={() => setIsModalOpen(false)}
-                className="flex-1 py-3 border border-gray-200 rounded-xl font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
+                onClick={handleAddItem}
+                className="flex-1 py-3 bg-[#0a2e27] text-white rounded-xl font-semibold hover:bg-[#08241f] flex items-center justify-center gap-2"
               >
-                Cancel
-              </button>
-              <button className="flex-1 py-3 bg-[#0a2e27] text-white rounded-xl font-semibold hover:bg-[#08241f] transition-colors flex items-center justify-center gap-2">
                 <span>+</span> Add to Inventory
               </button>
             </div>
