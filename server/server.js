@@ -41,6 +41,26 @@ const consumableSchema = new mongoose.Schema({
   isArchived: { type: Boolean, default: false }
 }, { timestamps: true });
 
+const taskSchema = new mongoose.Schema({
+  title: { type: String, required: true },
+  description: String,
+  area: { type: String, required: true }, // "Powerlifting", etc.
+  priority: { type: String, enum: ["High", "Medium", "Low"], default: "Medium" },
+  frequency: { type: String, enum: ["Daily", "Weekly", "Monthly"], required: true },
+  dayType: { type: String, default: "All" },
+  shift: { type: String, enum: ["AM", "PM"], default: "AM" },
+  startTime: Number, // 320
+  endTime: Number,   // 360
+  status: { type: String, enum: ["Completed", ""], default: "Completed" },
+  isBreak: { type: Boolean, default: false },
+  isArchived: { type: Boolean, default: false },
+  date: { type: String, default: () => new Date().toISOString().split('T')[0] },
+  completedAt: String
+}, { timestamps: true });
+
+
+
+const Task = mongoose.model("Task", taskSchema);
 const Asset = mongoose.model("Asset", assetSchema);
 const Consumable = mongoose.model("Consumable", consumableSchema);
 
@@ -131,6 +151,52 @@ async function startServer() {
         res.status(500).json({ error: "Could not compile inventory summary" });
       }
     });
+
+// ─── TASKS ROUTE ───
+app.get("/api/tasks", async (req, res) => {
+  try {
+    const tasks = await Task.find({ isArchived: false }).sort({ startTime: 1 });
+    res.json(tasks);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Add this to your backend routes
+app.post('/api/tasks', async (req, res) => {
+  try {
+    const { title, frequency, area, startTime, endTime, date, status } = req.body;
+    
+    // Create a new task object (matches your Task interface)
+    const newTask = new Task({
+      title,
+      frequency,
+      area,
+      startTime,
+      endTime,
+      date,
+      status: status || 'Completed',
+      isArchived: false // Matches the archiving logic from InventoryPage[cite: 1]
+    });
+
+    const savedTask = await newTask.save();
+    res.status(201).json(savedTask);
+  } catch (error) {
+    console.error("Error creating task:", error);
+    res.status(500).json({ message: "Internal Server Error" });
+  }
+});
+
+app.patch("/api/tasks/:id", async (req, res) => {
+  try {
+    const task = await Task.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    if (!task) return res.status(404).json({ error: "Task not found" });
+    res.json(task);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 
     app.listen(5000, () => console.log("🚀 Server running on port 5000"));
   } catch (err) {
