@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { SidebarNavigationSection } from "../components/SidebarNavigationSection";
-import { X, Info, CheckCircle2, AlertCircle, Wrench, Clock, Layers } from "lucide-react";
+import { X, Info, CheckCircle2, AlertCircle, Wrench, Clock, Layers, Filter, MapPin, Trash2 } from "lucide-react";
 // Import the API services
 import { inventoryService } from "../services/InventoryServices";
 
@@ -36,6 +36,15 @@ export const InventoryPage: React.FC = () => {
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [activeCategory, setActiveCategory] = useState<"Consumables" | "Assets" | "All">("All");
+  
+  // --- Consumable Sub-Filters ---
+  const [consumableFilter, setConsumableFilter] = useState<"All" | "Low Stock" | "Out of Stock">("All");
+
+  // --- Asset Filter States ---
+  const [assetFilters, setAssetFilters] = useState({
+    condition: "All",
+    area: "All"
+  });
 
   // --- Asset State ---
   const [selectedAsset, setSelectedAsset] = useState<EquipmentAsset | null>(null);
@@ -53,7 +62,7 @@ export const InventoryPage: React.FC = () => {
     quantity: "",
     location: "", 
     lowStockAlert: "",
-    unit: ""
+    unit: "pcs" // Default to pcs
   });
 
   const fetchData = async () => {
@@ -84,6 +93,10 @@ export const InventoryPage: React.FC = () => {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
+  const updateAssetFilter = (key: 'condition' | 'area', value: string) => {
+    setAssetFilters(prev => ({ ...prev, [key]: value }));
+  };
+
   const handleConditionUpdate = async (newCondition: string) => {
     if (!selectedAsset) return;
     try {
@@ -108,20 +121,73 @@ export const InventoryPage: React.FC = () => {
     }
   };
 
-  const filteredConsumables = consumables.filter(item =>
-    item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (item.location && item.location.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
+  const handleArchiveItem = async (e: React.MouseEvent, id: string, type: "Asset" | "Consumable") => {
+    e.stopPropagation(); 
+    
+    const confirmBox = window.confirm("Move this item to archives?");
+    if (confirmBox === true) {
+      try {
+        if (type === "Asset") {
+          await inventoryService.archiveAsset(id);
+        } else {
+          await inventoryService.archiveConsumable(id);
+        }
+        await fetchData(); 
+      } catch (err: any) {
+        console.error("Error archiving:", err);
+        alert("Failed to archive asset");
+      }
+    }
+  };
 
-  const filteredAssets = assets.filter(asset =>
-    asset.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    asset.assetId.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (asset.area && asset.area.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
+  const isLowStock = (item: InventoryItemData) => {
+    return item.quantity > 0 && item.quantity <= (item.lowStockAlert || 0);
+  };
 
-  const filteredSummary = summary.filter(item => 
-    item.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const isOutOfStock = (item: InventoryItemData) => {
+    return item.quantity === 0;
+  };
+
+  // --- RECODED SORTING LOGIC FOR ALL VIEWS ---
+
+  // 1. Process Consumables (Descending by _id)
+  const getProcessedConsumables = () => {
+    let list = [...consumables].sort((a, b) => b._id.localeCompare(a._id));
+
+    if (consumableFilter === "Low Stock") {
+      list = list.filter(isLowStock);
+    } else if (consumableFilter === "Out of Stock") {
+      list = list.filter(isOutOfStock);
+    }
+
+    return list.filter(item =>
+      item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (item.location && item.location.toLowerCase().includes(searchQuery.toLowerCase()))
+    );
+  };
+
+  const filteredConsumables = getProcessedConsumables();
+
+  // 2. Process Assets (Descending by _id - FIXED)
+  const filteredAssets = [...assets]
+    .sort((a, b) => b._id.localeCompare(a._id)) 
+    .filter(asset => {
+      const matchesSearch = asset.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                            asset.assetId.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                            (asset.area && asset.area.toLowerCase().includes(searchQuery.toLowerCase()));
+      
+      const matchesCondition = assetFilters.condition === "All" || asset.condition === assetFilters.condition;
+      const matchesArea = assetFilters.area === "All" || asset.area === assetFilters.area;
+
+      return matchesSearch && matchesCondition && matchesArea;
+    });
+
+  // 3. Process All List (Descending by _id - FIXED)
+  const filteredSummary = [...summary]
+    .sort((a, b) => b._id.localeCompare(a._id))
+    .filter(item => 
+      item.name.toLowerCase().includes(searchQuery.toLowerCase())
+    );
 
   const handleAddItem = async () => {
     if (!formData.name) {
@@ -138,7 +204,7 @@ export const InventoryPage: React.FC = () => {
       category: activeCategory === "All" ? "Consumables" : activeCategory,
       [isAsset ? 'area' : 'location']: formData.location,
       lowStockAlert: Number(formData.lowStockAlert) || 0,
-      unit: formData.unit || "pcs",
+      unit: formData.unit,
       condition: "Working",
       purchaseDate: new Date().toISOString(),
       isArchived: false
@@ -152,7 +218,7 @@ export const InventoryPage: React.FC = () => {
       }
 
       setIsModalOpen(false);
-      setFormData({ name: "", quantity: "", location: "", lowStockAlert: "", unit: "" });
+      setFormData({ name: "", quantity: "", location: "", lowStockAlert: "", unit: "pcs" });
       fetchData();
     } catch (err: any) {
       console.error("Network error:", err);
@@ -160,18 +226,9 @@ export const InventoryPage: React.FC = () => {
     }
   };
 
-  const isLowStock = (item: InventoryItemData) => {
-    return item.quantity > 0 && item.quantity <= (item.lowStockAlert || 0);
-  };
-
-  const isOutOfStock = (item: InventoryItemData) => {
-    return item.quantity === 0;
-  };
-
   const lowStockItems = consumables.filter(isLowStock);
   const outOfStockItems = consumables.filter(isOutOfStock);
 
-  // Helper for Asset Status Colors
   const getAssetStatusColor = (condition: string) => {
     switch (condition) {
       case "Damaged": return "text-[#ff1a1a]"; 
@@ -287,25 +344,78 @@ export const InventoryPage: React.FC = () => {
                 </div>
               </div>
 
-              <div className="flex gap-2 mb-6">
-                <button
-                  onClick={() => setActiveCategory("All")}
-                  className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${activeCategory === "All" ? "bg-[#0a2e27] text-white" : "bg-[#d1d1d1] text-[#6b6b6b]"}`}
-                >
-                  All Items
-                </button>
-                <button
-                  onClick={() => setActiveCategory("Consumables")}
-                  className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${activeCategory === "Consumables" ? "bg-[#0a2e27] text-white" : "bg-[#d1d1d1] text-[#6b6b6b]"}`}
-                >
-                  Consumables
-                </button>
-                <button
-                  onClick={() => setActiveCategory("Assets")}
-                  className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${activeCategory === "Assets" ? "bg-[#0a2e27] text-white" : "bg-[#d1d1d1] text-[#6b6b6b]"}`}
-                >
-                  Assets
-                </button>
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setActiveCategory("All")}
+                    className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${activeCategory === "All" ? "bg-[#0a2e27] text-white" : "bg-[#d1d1d1] text-[#6b6b6b]"}`}
+                  >
+                    All Items
+                  </button>
+                  <button
+                    onClick={() => setActiveCategory("Consumables")}
+                    className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${activeCategory === "Consumables" ? "bg-[#0a2e27] text-white" : "bg-[#d1d1d1] text-[#6b6b6b]"}`}
+                  >
+                    Consumables
+                  </button>
+                  <button
+                    onClick={() => setActiveCategory("Assets")}
+                    className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${activeCategory === "Assets" ? "bg-[#0a2e27] text-white" : "bg-[#d1d1d1] text-[#6b6b6b]"}`}
+                  >
+                    Assets
+                  </button>
+                </div>
+
+                {activeCategory === "Assets" && (
+                  <div className="flex gap-3 animate-in fade-in slide-in-from-right-2">
+                    <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 px-3 py-1.5 rounded-xl">
+                      <Filter size={14} className="text-gray-400" />
+                      <select 
+                        value={assetFilters.condition}
+                        onChange={(e) => updateAssetFilter('condition', e.target.value)}
+                        className="bg-transparent text-[11px] font-bold uppercase focus:outline-none appearance-none border-none outline-none shadow-none"
+                      >
+                        <option value="All">All Conditions</option>
+                        <option value="Working">Working</option>
+                        <option value="Damaged">Damaged</option>
+                        <option value="Need Repair">Need Repair</option>
+                        <option value="Under Repair">Under Repair</option>
+                      </select>
+                    </div>
+                    <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 px-3 py-1.5 rounded-xl">
+                      <MapPin size={14} className="text-gray-400" />
+                      <select 
+                        value={assetFilters.area}
+                        onChange={(e) => updateAssetFilter('area', e.target.value)}
+                        className="bg-transparent text-[11px] font-bold uppercase focus:outline-none appearance-none border-none outline-none shadow-none"
+                      >
+                        <option value="All">All Areas</option>
+                        <option value="Mezzanine">Mezzanine</option>
+                        <option value="Powerlifting Area">Powerlifting Area</option>
+                        <option value="Open WOD Area">Open WOD Area</option>
+                        <option value="CrossFit Area">CrossFit Area</option>
+                        <option value="Café">Café</option>
+                      </select>
+                    </div>
+                  </div>
+                )}
+
+                {activeCategory === "Consumables" && (
+                  <div className="flex items-center gap-2 bg-gray-100 p-1 rounded-xl animate-in fade-in slide-in-from-right-2">
+                     <button 
+                        onClick={() => setConsumableFilter("All")}
+                        className={`px-3 py-1 text-[11px] font-bold uppercase rounded-lg transition-all ${consumableFilter === "All" ? "bg-white text-[#0a2e27] shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
+                     >All</button>
+                     <button 
+                        onClick={() => setConsumableFilter("Low Stock")}
+                        className={`px-3 py-1 text-[11px] font-bold uppercase rounded-lg transition-all ${consumableFilter === "Low Stock" ? "bg-[#ff9900] text-white shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
+                     >Low Stock</button>
+                     <button 
+                        onClick={() => setConsumableFilter("Out of Stock")}
+                        className={`px-3 py-1 text-[11px] font-bold uppercase rounded-lg transition-all ${consumableFilter === "Out of Stock" ? "bg-[#ff1a1a] text-white shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
+                     >Out of Stock</button>
+                  </div>
+                )}
               </div>
 
               <h3 className="text-lg font-semibold mb-4 text-[#1f1f1f]">
@@ -409,15 +519,24 @@ export const InventoryPage: React.FC = () => {
                                 </p>
                               </div>
                             </div>
-                            <div className="text-right shrink-0 ml-4">
-                              <div className={`text-xl md:text-2xl font-bold ${out ? "text-[#ff1a1a]" : low ? "text-[#ff9900]" : "text-[#1f1f1f]"}`}>{item.quantity}</div>
-                              <div className="text-[10px] text-[#6b6b6b] uppercase tracking-wider font-bold">{item.unit || "pcs"}</div>
+                            <div className="flex items-center gap-6 shrink-0 ml-4">
+                              <div className="text-right">
+                                <div className={`text-xl md:text-2xl font-bold ${out ? "text-[#ff1a1a]" : low ? "text-[#ff9900]" : "text-[#1f1f1f]"}`}>{item.quantity}</div>
+                                <div className="text-[10px] text-[#6b6b6b] uppercase tracking-wider font-bold">{item.unit || "pcs"}</div>
+                              </div>
+                              <button 
+                                onClick={(e) => handleArchiveItem(e, item._id, "Consumable")}
+                                className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                                title="Archive Item"
+                              >
+                                <Trash2 size={18} />
+                              </button>
                             </div>
                           </div>
                         );
                       })
                     ) : (
-                      <div className="py-10 text-center text-gray-400 border-2 border-dashed border-gray-100 rounded-xl">No consumables found.</div>
+                      <div className="py-10 text-center text-gray-400 border-2 border-dashed border-gray-100 rounded-xl">No consumables found matching criteria.</div>
                     )
                   ) : (
                     filteredAssets.length > 0 ? (
@@ -425,7 +544,7 @@ export const InventoryPage: React.FC = () => {
                         <div
                           key={asset._id}
                           onClick={() => setSelectedAsset(asset)}
-                          className={`flex items-center justify-between p-4 bg-white border rounded-xl hover:shadow-md transition-all cursor-pointer group mb-3 ${asset.condition === "Damaged" ? "border-[#ff1a1a]" : asset.condition === "Need Repair" ? "border-[#ff9900]" : asset.condition === "Under Repair" ? "border-[#3385ff]" : "border-[#e8e8e8]"}`}
+                          className={`flex items-center justify-between p-4 bg-white border rounded-xl hover:shadow-md transition-all cursor-pointer group mb-3 ${asset.condition === "Damaged" ? "border-[#ff1a1a]" : asset.condition === "Need Repair" ? "border-[#ff9900]" : asset.condition === "Under Repair" ? "border-[#3385ff]" : asset.condition === "Working" ? "border-green-600" : "border-[#e8e8e8]"}`}
                         >
                           <div className="flex items-center gap-3 md:gap-4 min-w-0">
                             <div className="w-10 h-10 flex items-center justify-center rounded-lg bg-[#f4f5f6] group-hover:bg-[#0a2e27] transition-colors">
@@ -436,15 +555,24 @@ export const InventoryPage: React.FC = () => {
                               <p className="text-xs md:text-sm text-[#6b6b6b]">ID: {asset.assetId} • {asset.area || "Unassigned"}</p>
                             </div>
                           </div>
-                          <div className="text-right">
-                            <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase ${getAssetBadgeClass(asset.condition)}`}>
-                              {asset.condition}
-                            </span>
+                          <div className="flex items-center gap-6">
+                            <div className="text-right">
+                              <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase ${getAssetBadgeClass(asset.condition)}`}>
+                                {asset.condition}
+                              </span>
+                            </div>
+                            <button 
+                              onClick={(e) => handleArchiveItem(e, asset._id, "Asset")}
+                              className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                              title="Archive Asset"
+                            >
+                              <Trash2 size={18} />
+                            </button>
                           </div>
                         </div>
                       ))
                     ) : (
-                      <div className="py-10 text-center text-gray-400 border-2 border-dashed border-gray-100 rounded-xl">No assets found.</div>
+                      <div className="py-10 text-center text-gray-400 border-2 border-dashed border-gray-100 rounded-xl">No assets found matching these filters.</div>
                     )
                   )}
                 </div>
@@ -572,7 +700,7 @@ export const InventoryPage: React.FC = () => {
                     name="location"
                     value={formData.location}
                     onChange={handleInputChange}
-                    className="w-full px-4 py-2 border border-gray-200 rounded-lg bg-white focus:outline-none focus:border-[#0a2e27]"
+                    className="w-full px-4 py-2 border border-gray-200 rounded-lg bg-white focus:outline-none focus:border-[#0a2e27] appearance-none"
                   >
                     <option value="">Select zone</option>
                     <option value="Mezzanine">Mezzanine</option>
@@ -601,14 +729,21 @@ export const InventoryPage: React.FC = () => {
                   </div>
                   <div className="space-y-1">
                     <label className="text-sm font-semibold text-gray-700">Unit</label>
-                    <input
+                    {/* CHANGED TO DROPDOWN */}
+                    <select
                       name="unit"
                       value={formData.unit}
                       onChange={handleInputChange}
-                      type="text"
-                      placeholder="e.g. pcs, kg, box"
-                      className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-[#0a2e27]"
-                    />
+                      className="w-full px-4 py-2 border border-gray-200 rounded-lg bg-white focus:outline-none focus:border-[#0a2e27] appearance-none"
+                    >
+                      <option value="liters">liters</option>
+                      <option value="pcs">pcs</option>
+                      <option value="box">box</option>
+                      <option value="pack">pack</option>
+                      <option value="bottle">bottle</option>
+                      <option value="can">can</option>
+                      <option value="other">other</option>
+                    </select>
                   </div>
                 </div>
               )}

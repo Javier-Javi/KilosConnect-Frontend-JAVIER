@@ -29,7 +29,12 @@ const consumableSchema = new mongoose.Schema({
   consumableId: { type: String, required: true, unique: true },
   name: { type: String, required: true },
   category: { type: String },
-  unit: { type: String, default: "pcs" },
+  // UPDATED: Added enum validation to match frontend dropdown options
+  unit: { 
+    type: String, 
+    enum: ['liters', 'pcs', 'box', 'pack', 'bottle', 'can', 'other'], 
+    default: "pcs" 
+  },
   quantity: { type: Number, default: 0 },
   lowStockAlert: { type: Number, default: 0 },
   location: { type: String },
@@ -49,7 +54,7 @@ async function startServer() {
     // ─── ASSET ROUTES ───
     app.get("/api/assets", async (req, res) => {
       try {
-        const assets = await Asset.find();
+        const assets = await Asset.find({ isArchived: false });
         res.json(assets);
       } catch (err) { res.status(500).json({ error: err.message }); }
     });
@@ -65,14 +70,21 @@ async function startServer() {
     app.patch("/api/assets/:id", async (req, res) => {
       try {
         const asset = await Asset.findByIdAndUpdate(req.params.id, req.body, { new: true });
+        if (!asset) {
+          console.error(`Asset with ID ${req.params.id} not found`);
+          return res.status(404).json({ error: "Asset not found" });
+        }
         res.json(asset);
-      } catch (err) { res.status(400).json({ error: err.message }); }
+      } catch (err) { 
+        console.error("Patch Asset Error:", err.message);
+        res.status(400).json({ error: err.message }); 
+      }
     });
 
     // ─── CONSUMABLE ROUTES ───
     app.get("/api/consumables", async (req, res) => {
       try {
-        const consumables = await Consumable.find();
+        const consumables = await Consumable.find({ isArchived: false });
         res.json(consumables);
       } catch (err) { res.status(500).json({ error: err.message }); }
     });
@@ -88,27 +100,31 @@ async function startServer() {
     app.patch("/api/consumables/:id", async (req, res) => {
       try {
         const consumable = await Consumable.findByIdAndUpdate(req.params.id, req.body, { new: true });
+        if (!consumable) {
+          console.error(`Consumable with ID ${req.params.id} not found`);
+          return res.status(404).json({ error: "Consumable not found" });
+        }
         res.json(consumable);
-      } catch (err) { res.status(400).json({ error: err.message }); }
+      } catch (err) { 
+        console.error("Patch Consumable Error:", err.message);
+        res.status(400).json({ error: err.message }); 
+      }
     });
 
-    // ─── SUMMARY ROUTE (The one causing the error) ───
+    // ─── SUMMARY ROUTE ───
     app.get("/api/inventory/summary", async (req, res) => {
       try {
         const [assets, consumables] = await Promise.all([
-          Asset.find(),
-          Consumable.find()
+          Asset.find({ isArchived: false }),
+          Consumable.find({ isArchived: false })
         ]);
         
-        // Combine and tag them so the frontend can distinguish styles
         const combined = [
           ...assets.map(a => ({ ...a.toObject(), type: 'Asset' })),
           ...consumables.map(c => ({ ...c.toObject(), type: 'Consumable' }))
         ];
 
-        // Sort alphabetically by name
         combined.sort((a, b) => a.name.localeCompare(b.name));
-        
         res.json(combined);
       } catch (err) {
         console.error("Summary error:", err);
