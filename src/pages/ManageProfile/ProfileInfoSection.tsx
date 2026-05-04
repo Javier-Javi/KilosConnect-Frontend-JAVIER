@@ -14,7 +14,7 @@ interface ProfileInfoSectionProps {
   isEditing: boolean;
   onEditToggle: () => void;
 }
-
+//poro errooor
 const ProfileInfoSection: React.FC<ProfileInfoSectionProps> = ({
   profile,
   isEditing,
