@@ -55,6 +55,13 @@ function App() {
           </ProtectedRoute>
         }
         />
+        <Route path='/profile'
+          element={
+            <ProtectedRoute allowedRoles={['admin', 'custodian']}>
+                <ProfileMain />
+            </ProtectedRoute>
+          }
+        />
       {/* redirects to login if not found or authenticated */}
       <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
