@@ -1,448 +1,302 @@
-import React, { useMemo, useState } from "react";
-import { useAuth } from '../../Hooks/useAuth';
+// ManageAccountsModule/ManageProfileMain.tsx
+import React, { useState } from "react";
 import { SidebarNavigationSection } from '../../components/SidebarNavigationSection';
+import { useAuth } from "../../Hooks/useAuth";
 
-interface UserAccount {
-  id: string;
-  initials: string;
-  name: string;
-  email: string;
-  role: string;
-  status: "Active" | "Inactive";
-  dateAdded: string;
-}
+// Modular Imports
+import type { UserAccount, NewUserForm } from "./types";
+import AccountsStatsSection from "./AccountsStatsSection";
+import AccountsFilterSection from "./AccountsFilterSection";
+import AccountsListSection from "./AccountsListSection";
+import AccountsIcons from "./AccountsIcons";
 
-interface NewUserForm {
-  username: string;
-  password: string;
-  firstName: string;
-  lastName: string;
-  role: string;
-}
-
-export interface ProfileData {
-  firstName: string;
-  lastName: string;
-  role: string;
-  dateJoined: string;
-  avatarUrl?: string;
-}
-
-export interface PerformanceStats {
-  tasksCompleted: number;
-  incidentsReported: number;
-  itemsLogged: number;
-  activeDays: number;
-}
-
-export type ActivityType = "task" | "incident" | "inventory" | "log";
-
-export interface ActivityItem {
-  id: string;
-  type: ActivityType;
-  title: string;
-  description: string;
-  timeAgo: string;
-}
-
-const ManageProfileMain: React.FC = () => {
+const ManageAccountsMain: React.FC = () => {
   const [search, setSearch] = useState("");
-  // Updated to allow state updates (setAccounts)
   const [accounts, setAccounts] = useState<UserAccount[]>([
-    {
-      id: "user-1",
-      initials: "JS",
-      name: "John Smith",
-      email: "john.smith@kilosph.com",
-      role: "Admin",
-      status: "Active",
-      dateAdded: "05/12/2024",
-    },
-    {
-      id: "user-2",
-      initials: "MD",
-      name: "Maria Dizon",
-      email: "maria.dizon@kilosph.com",
-      role: "Custodian",
-      status: "Active",
-      dateAdded: "09/18/2024",
-    },
-    {
-      id: "user-3",
-      initials: "DC",
-      name: "David Chen",
-      email: "david.chen@kilosph.com",
-      role: "Custodian",
-      status: "Active",
-      dateAdded: "12/06/2024",
-    },
-    {
-      id: "user-4",
-      initials: "SS",
-      name: "Sarah Santos",
-      email: "sarah.santos@kilosph.com",
-      role: "Admin",
-      status: "Inactive",
-      dateAdded: "02/02/2025",
-    },
-    {
-      id: "user-5",
-      initials: "MR",
-      name: "Michael Reyes",
-      email: "michael.reyes@kilosph.com",
-      role: "Custodian",
-      status: "Active",
-      dateAdded: "03/22/2025",
-    },
+    { id: "USER-1032CD8C", initials: "MG", name: "Maria Garcia", email: "maria.garcia@kilosph.com", role: "Custodian", status: "Active", dateAdded: "2/20/2024", phoneNumber: "63+ 956 745 2678" },
+    { id: "USER-1029ZS8C", initials: "DC", name: "David Chen", email: "david.chen@kilosph.com", role: "Custodian", status: "Active", dateAdded: "3/10/2024", phoneNumber: "63+ 998 574 9281" },
+    { id: "USER-1029ZS8D", initials: "DT", name: "David Tan", email: "david.Tan@kilosph.com", role: "Admin", status: "Inactive", dateAdded: "4/6/2024", phoneNumber: "63+ 998 574 9281" }
   ]);
 
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [editingAccountId, setEditingAccountId] = useState<string | null>(null);
-  const [newUserForm, setNewUserForm] = useState<NewUserForm>({
-    username: "",
-    password: "",
+  // Modals state
+  const [isAddOpen, useStateAdd] = useState(false);
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState({ isOpen: false, id: "", name: "" });
+  const [showPassword, setShowPassword] = useState(false);
+
+  // Form State
+  const [formData, setFormData] = useState<NewUserForm>({
     firstName: "",
     lastName: "",
-    role: "",
+    email: "",
+    phoneNumber: "63+ ",
+    role: "Admin",
+    password: ""
   });
 
-  const filteredAccounts = useMemo(
-    () =>
-      accounts.filter(
-        (account) =>
-          account.name.toLowerCase().includes(search.toLowerCase()) ||
-          account.email.toLowerCase().includes(search.toLowerCase())
-      ),
-    [accounts, search]
+  const [editFormData, setEditFormData] = useState<UserAccount | null>(null);
+
+  const filteredAccounts = accounts.filter(acc =>
+    acc.name.toLowerCase().includes(search.toLowerCase()) ||
+    acc.email.toLowerCase().includes(search.toLowerCase()) ||
+    acc.id.toLowerCase().includes(search.toLowerCase())
   );
 
-  const openAddModal = () => {
-    setEditingAccountId(null);
-    setIsAddModalOpen(true);
+  // Formats digits into "63+ ### ### ####" automatically
+  const formatPhoneNumber = (value: string): string => {
+    // Extract only digits from the input
+    const digits = value.replace(/\D/g, "");
+    
+    // Discard any initial '63' from re-parsing to avoid duplication
+    let coreDigits = digits;
+    if (digits.startsWith("63")) {
+      coreDigits = digits.substring(2);
+    }
+
+    // Limit maximum length of phone number digits to 10 numbers
+    const truncated = coreDigits.substring(0, 10);
+
+    // Build format structured as: "63+ ### ### ####"
+    let formatted = "63+ ";
+    if (truncated.length > 0) {
+      formatted += truncated.substring(0, 3);
+    }
+    if (truncated.length >= 4) {
+      formatted += " " + truncated.substring(3, 6);
+    }
+    if (truncated.length >= 7) {
+      formatted += " " + truncated.substring(6, 10);
+    }
+
+    return formatted;
   };
 
-  const openEditModal = (account: UserAccount) => {
-    const [firstName, ...lastNameParts] = account.name.split(" ");
-    setEditingAccountId(account.id);
-    setNewUserForm({
-      username: account.email.split("@")[0], // Mock username from email
-      password: "••••••••", // Mock password
-      firstName: firstName,
-      lastName: lastNameParts.join(" "),
-      role: account.role,
-    });
-    setIsAddModalOpen(true);
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    let value = e.target.value;
+    
+    if (e.target.name === "phoneNumber") {
+      value = formatPhoneNumber(value);
+    }
+    
+    setFormData({ ...formData, [e.target.name]: value });
   };
 
-  const closeAddModal = () => {
-    setIsAddModalOpen(false);
-    setEditingAccountId(null);
-    setNewUserForm({
-      username: "",
-      password: "",
-      firstName: "",
-      lastName: "",
-      role: "",
-    });
+  const handleEditInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    if (editFormData) {
+      let value = e.target.value;
+      
+      if (e.target.name === "phoneNumber") {
+        value = formatPhoneNumber(value);
+      }
+      
+      setEditFormData({ ...editFormData, [e.target.name]: value });
+    }
   };
 
-  const handleNewUserChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    setNewUserForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
-  };
-
-  const handleAddUserSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleCreateUser = (e: React.FormEvent) => {
     e.preventDefault();
+    const fullName = `${formData.firstName} ${formData.lastName}`.trim();
+    const initials = `${formData.firstName[0] || ''}${formData.lastName[0] || ''}`.toUpperCase();
+    
+    const newAcc: UserAccount = {
+      id: `USER-${Math.random().toString(36).substr(2, 8).toUpperCase()}`,
+      initials: initials || "U",
+      name: fullName,
+      email: formData.email,
+      phoneNumber: formData.phoneNumber,
+      role: formData.role,
+      status: "Active",
+      dateAdded: new Date().toLocaleDateString()
+    };
 
-    if (editingAccountId) {
-      // Logic for Editing
-      setAccounts((prev) =>
-        prev.map((acc) =>
-          acc.id === editingAccountId
-            ? {
-                ...acc,
-                name: `${newUserForm.firstName} ${newUserForm.lastName}`,
-                initials: `${newUserForm.firstName[0]}${newUserForm.lastName[0]}`.toUpperCase(),
-                role: newUserForm.role,
-                email: `${newUserForm.username.toLowerCase()}@kilosph.com`,
-              }
-            : acc
-        )
-      );
-    } else {
-      // Logic for Adding
-      const newUser: UserAccount = {
-        id: `user-${Date.now()}`,
-        initials: `${newUserForm.firstName[0]}${newUserForm.lastName[0]}`.toUpperCase(),
-        name: `${newUserForm.firstName} ${newUserForm.lastName}`,
-        email: `${newUserForm.username.toLowerCase()}@kilosph.com`,
-        role: newUserForm.role,
-        status: "Active",
-        dateAdded: new Date().toLocaleDateString("en-US", {
-          month: "2-digit",
-          day: "2-digit",
-          year: "numeric",
-        }),
-      };
-      setAccounts((prev) => [...prev, newUser]);
-    }
-
-    closeAddModal();
+    setAccounts([newAcc, ...accounts]);
+    useStateAdd(false);
+    setFormData({ firstName: "", lastName: "", email: "", phoneNumber: "63+ ", role: "Admin", password: "" });
   };
 
-  const handleDeleteUser = (id: string) => {
-    if (window.confirm("Are you sure you want to delete this user?")) {
-      setAccounts((prev) => prev.filter((acc) => acc.id !== id));
-    }
+  const handleEditClick = (account: UserAccount) => {
+    setEditFormData(account);
+    setIsEditOpen(true);
   };
 
-    const { role,  } = useAuth()
-    const userRole = (role ?? 'custodian') as React.ComponentProps<typeof SidebarNavigationSection>["userRole"]
-  
+  const handleUpdateUser = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editFormData) return;
+
+    setAccounts(accounts.map(acc => acc.id === editFormData.id ? editFormData : acc));
+    setIsEditOpen(false);
+    setEditFormData(null);
+  };
+
+  const handleDeleteClick = (id: string, name: string) => {
+    setDeleteConfirm({ isOpen: true, id, name });
+  };
+
+  const confirmDelete = () => {
+    setAccounts(accounts.filter(acc => acc.id !== deleteConfirm.id));
+    setDeleteConfirm({ isOpen: false, id: "", name: "" });
+  };
+
+  const { role } = useAuth()
+  const userRole = (role ?? 'custodian, admin') as React.ComponentProps<typeof SidebarNavigationSection>["userRole"]
+
 
   return (
-    <div className="flex h-screen bg-[#f4f5f6] overflow-hidden">
+    <div className="min-h-screen bg-[#f8fafc]">
       <SidebarNavigationSection userRole={userRole}/>
+      
+      <div className="lg:pl-[280px] p-8">
+        <AccountsStatsSection />
 
-      <div className="flex flex-col flex-1 min-w-0 ml-60 overflow-y-auto">
-        <header className="flex items-center justify-between px-8 pt-8 pb-4 bg-white border-b border-[#e8e8e8]">
-          <div>
-            <h1 className="font-['Poppins',Helvetica] font-semibold text-[#1f1f1f] text-[36px] leading-tight m-0 p-0">
-              Manage Accounts
-            </h1>
-            <p className="mt-0.5 font-['Poppins',Helvetica] font-normal text-[#6b6b6b] text-base leading-normal m-0 p-0">
-              Add, edit, and manage user accounts
-            </p>
-          </div>
+        <div className="bg-white rounded-2xl shadow-sm border border-[#e2e8f0] overflow-hidden">
+          <AccountsFilterSection 
+            totalAccounts={accounts.length} 
+            onSearchChange={(val) => setSearch(val)} 
+            onAddNewUser={() => useStateAdd(true)} 
+          />
 
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-[#f0f0f0] transition-colors cursor-pointer"
-              aria-label="View notifications"
-            >
-              <img
-                className="w-6 h-6 object-contain"
-                alt="Notifications"
-                src="https://c.animaapp.com/C3N4JJvt/img/notification@2x.png"
-              />
-            </button>
-            <button
-              type="button"
-              className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-[#f0f0f0] transition-colors cursor-pointer"
-              aria-label="Open profile menu"
-            >
-              <img
-                className="w-8 h-8 object-cover rounded-full"
-                alt="Profile"
-                src="https://c.animaapp.com/C3N4JJvt/img/profile@2x.png"
-              />
-            </button>
-          </div>
-        </header>
+          <AccountsListSection 
+            accounts={filteredAccounts} 
+            onEditClick={(acc) => handleEditClick(acc)} 
+            onDeleteClick={(id, name) => handleDeleteClick(id, name)} 
+          />
+        </div>
 
-        <main className="flex-1 p-6 min-h-0">
-          <div className="bg-white rounded-2xl border border-[#e8e8e8] shadow-sm overflow-hidden">
-            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between px-6 py-5 border-b border-[#eef1f3]">
-              <div>
-                <p className="font-['Poppins',Helvetica] font-semibold text-[#1a1a1a] text-xl m-0 p-0">
-                  User Accounts
-                </p>
-                <p className="font-['Poppins',Helvetica] text-sm text-[#6b6b6b] mt-1 m-0 p-0">
-                  Manage accounts and update access levels for your team.
-                </p>
+        {/* --- ADD NEW USER POPUP --- */}
+        {isAddOpen && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 animate-in fade-in duration-200">
+            <div className="bg-white rounded-[20px] w-full max-w-[500px] overflow-hidden shadow-2xl">
+              <div className="bg-[#0b3026] px-8 py-6">
+                <h3 className="text-white text-2xl font-bold tracking-tight">Add New User</h3>
               </div>
-
-              <button
-                type="button"
-                onClick={openAddModal}
-                className="inline-flex items-center gap-2 bg-[#072821] hover:bg-[#153d34] text-white text-sm font-medium px-4 py-2 rounded-[10px] transition-colors"
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="12" y1="5" x2="12" y2="19" />
-                  <line x1="5" y1="12" x2="19" y2="12" />
-                </svg>
-                Add New User
-              </button>
-            </div>
-
-            <div className="px-6 py-5 border-b border-[#eef1f3]">
-              <input
-                type="search"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search users by name or email..."
-                className="w-full rounded-xl border border-[#d1d5db] bg-[#fafbfc] px-4 py-3 text-sm text-[#1a1a1a] focus:outline-none focus:ring-2 focus:ring-[#1a4d3e]"
-              />
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="min-w-full border-collapse">
-                <thead className="bg-[#fafbfc]">
-                  <tr>
-                    {[
-                      "Name",
-                      "User ID",
-                      "Role",
-                      "Status",
-                      "Date Added",
-                      "Actions",
-                    ].map((label) => (
-                      <th
-                        key={label}
-                        className="px-6 py-4 text-left text-[11px] font-semibold tracking-[0.18em] uppercase text-[#6b7280]"
-                      >
-                        {label}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredAccounts.length === 0 ? (
-                    <tr>
-                      <td
-                        colSpan={6}
-                        className="py-10 text-center text-sm text-[#9ca3af]"
-                      >
-                        No user accounts found.
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredAccounts.map((account) => (
-                      <tr
-                        key={account.id}
-                        className="border-b border-[#eef1f3] hover:bg-[#fbfcfd] transition-colors"
-                      >
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-3">
-                            <div className="w-9 h-9 rounded-full bg-[#1a4d3e] text-white flex items-center justify-center text-sm font-semibold">
-                              {account.initials}
-                            </div>
-                            <div>
-                              <p className="font-['Poppins',Helvetica] font-medium text-sm text-[#1a1a1a] m-0">
-                                {account.name}
-                              </p>
-                              <p className="font-['Poppins',Helvetica] text-xs text-[#6b7280] m-0">
-                                {account.email}
-                              </p>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 font-['Poppins',Helvetica] text-sm text-[#6b7280]">
-                          {account.email}
-                        </td>
-                        <td className="px-6 py-4 font-['Poppins',Helvetica] text-sm text-[#1a1a1a]">
-                          <span className="inline-flex items-center rounded-full bg-[#eef6f1] px-3 py-1 text-xs font-semibold text-[#1a4d3e]">
-                            {account.role}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4">
-                          <span
-                            className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${
-                              account.status === "Active"
-                                ? "bg-[#def7ec] text-[#166534]"
-                                : "bg-[#f3f4f6] text-[#6b7280]"
-                            }`}
-                          >
-                            {account.status}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 font-['Poppins',Helvetica] text-sm text-[#6b7280]">
-                          {account.dateAdded}
-                        </td>
-                        <td className="px-6 py-4 flex items-center gap-3">
-                          <button
-                            type="button"
-                            onClick={() => openEditModal(account)}
-                            className="text-[#2563eb] hover:text-[#1d4ed8] transition-colors"
-                          >
-                            Edit
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteUser(account.id)}
-                            className="text-[#ef4444] hover:text-[#dc2626] transition-colors"
-                          >
-                            Delete
-                          </button>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </main>
-
-        {isAddModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-            <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl">
-              <div className="rounded-t-2xl bg-[#072821] px-6 py-4">
-                <h2 className="font-['Poppins',Helvetica] text-lg font-semibold text-white">
-                  {editingAccountId ? "Edit User" : "Add User"}
-                </h2>
-              </div>
-              <form onSubmit={handleAddUserSubmit} className="space-y-4 px-6 py-6">
-                {[
-                  { name: "username", label: "Username", type: "text", placeholder: "Enter username" },
-                  { name: "password", label: "Password", type: "password", placeholder: "Enter password" },
-                  { name: "firstName", label: "First Name", type: "text", placeholder: "Enter first name" },
-                  { name: "lastName", label: "Last Name", type: "text", placeholder: "Enter last name" },
-                ].map((field) => (
-                  <div key={field.name}>
-                    <label className="block text-sm font-medium text-[#1a1a1a] mb-2">
-                      {field.label}
-                      <span className="text-[#ef4444]"> *</span>
-                    </label>
-                    <input
-                      name={field.name}
-                      type={field.type}
-                      required={!editingAccountId || field.name !== 'password'}
-                      value={newUserForm[field.name as keyof NewUserForm]}
-                      onChange={handleNewUserChange}
-                      placeholder={field.placeholder}
-                      className="w-full rounded-[10px] border border-[#d1d5db] bg-[#f8fafb] px-3 py-2 text-sm text-[#1a1a1a] focus:outline-none focus:ring-2 focus:ring-[#1a4d3e]"
-                    />
-                  </div>
-                ))}
+              <form onSubmit={handleCreateUser} className="p-8 space-y-5">
                 <div>
-                  <label className="block text-sm font-medium text-[#1a1a1a] mb-2">
-                    Role<span className="text-[#ef4444]"> *</span>
-                  </label>
-                  <select
-                    name="role"
-                    required
-                    value={newUserForm.role}
-                    onChange={handleNewUserChange}
-                    className="w-full rounded-[10px] border border-[#d1d5db] bg-[#f8fafb] px-3 py-2 text-sm text-[#1a1a1a] focus:outline-none focus:ring-2 focus:ring-[#1a4d3e]"
-                  >
-                    <option value="">Select role</option>
+                  <label className="block text-xs font-semibold text-[#4a5568] mb-1.5">First Name</label>
+                  <input required name="firstName" value={formData.firstName} onChange={handleInputChange} type="text" className="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-[#0b3026]" placeholder="e.g. Maria" />
+                </div>
+                
+                <div>
+                  <label className="block text-xs font-semibold text-[#4a5568] mb-1.5">Last Name</label>
+                  <input required name="lastName" value={formData.lastName} onChange={handleInputChange} type="text" className="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-[#0b3026]" placeholder="e.g. Garcia" />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-[#4a5568] mb-1.5">Email Address</label>
+                  <input required name="email" value={formData.email} onChange={handleInputChange} type="email" className="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-[#0b3026]" placeholder="maria@kilosph.com" />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-[#4a5568] mb-1.5">Phone Number</label>
+                  <input required name="phoneNumber" value={formData.phoneNumber} onChange={handleInputChange} type="text" className="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-[#0b3026]" placeholder="63+ 000 000 0000" />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-[#4a5568] mb-1.5">Role</label>
+                  <select name="role" value={formData.role} onChange={handleInputChange} className="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-[#0b3026] bg-white">
                     <option value="Admin">Admin</option>
                     <option value="Custodian">Custodian</option>
                   </select>
                 </div>
-                <div className="flex justify-end gap-3 pt-2">
-                  <button
-                    type="button"
-                    onClick={closeAddModal}
-                    className="rounded-[10px] border border-[#d1d5db] bg-white px-4 py-2 text-sm text-[#1a1a1a] hover:bg-[#f3f4f6] transition-colors"
-                  >
-                    Cancel
+
+                <div className="relative">
+                  <label className="block text-xs font-semibold text-[#4a5568] mb-1.5">Temporary Password</label>
+                  <input required name="password" value={formData.password} onChange={handleInputChange} type={showPassword ? "text" : "password"} className="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-[#0b3026]" placeholder="••••••••" />
+                  <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-[38px] text-gray-400 hover:text-gray-600 cursor-pointer">
+                    <AccountsIcons name={showPassword ? "eye-off" : "eye"} size={18} />
                   </button>
-                  <button
-                    type="submit"
-                    className="rounded-[10px] bg-[#072821] px-4 py-2 text-sm font-medium text-white hover:bg-[#153d34] transition-colors"
-                  >
-                    {editingAccountId ? "Update User" : "Add User"}
-                  </button>
+                </div>
+
+                <div className="flex justify-end gap-3 pt-6 border-t border-gray-100">
+                  <button type="button" onClick={() => useStateAdd(false)} className="px-5 py-2.5 border border-gray-300 rounded-lg text-sm font-bold text-[#1a1a1a] hover:bg-gray-50 cursor-pointer">Cancel</button>
+                  <button type="submit" className="px-5 py-2.5 bg-[#0b3026] text-white rounded-lg text-sm font-bold hover:bg-[#08241d] cursor-pointer">Create Account</button>
                 </div>
               </form>
             </div>
           </div>
         )}
+
+        {/* --- EDIT USER POPUP --- */}
+        {isEditOpen && editFormData && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 animate-in fade-in duration-200">
+            <div className="bg-white rounded-[20px] w-full max-w-[500px] overflow-hidden shadow-2xl">
+              <div className="bg-[#0b3026] px-8 py-6">
+                <h3 className="text-white text-2xl font-bold tracking-tight">Edit User</h3>
+              </div>
+              <form onSubmit={handleUpdateUser} className="p-8 space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold text-[#4a5568] mb-1.5">Full Name</label>
+                  <input required name="name" value={editFormData.name} onChange={handleEditInputChange} type="text" className="w-full border border-gray-300 rounded-lg px-3.5 py-2.5 text-sm focus:outline-none focus:border-[#0b3026]" />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-[#4a5568] mb-1.5">Email Address</label>
+                  <input required name="email" value={editFormData.email} onChange={handleEditInputChange} type="email" className="w-full border border-gray-300 rounded-lg px-3.5 py-2.5 text-sm focus:outline-none focus:border-[#0b3026]" />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-[#4a5568] mb-1.5">Phone Number</label>
+                  <input required name="phoneNumber" value={editFormData.phoneNumber} onChange={handleEditInputChange} type="text" className="w-full border border-gray-300 rounded-lg px-3.5 py-2.5 text-sm focus:outline-none focus:border-[#0b3026]" />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-[#4a5568] mb-1.5">Role</label>
+                    <select name="role" value={editFormData.role} onChange={handleEditInputChange} className="w-full border border-gray-300 rounded-lg px-3.5 py-2.5 text-sm focus:outline-none focus:border-[#0b3026] bg-white">
+                      <option value="Admin">Admin</option>
+                      <option value="Custodian">Custodian</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-[#4a5568] mb-1.5">Status</label>
+                    <select name="status" value={editFormData.status} onChange={handleEditInputChange} className="w-full border border-gray-300 rounded-lg px-3.5 py-2.5 text-sm focus:outline-none focus:border-[#0b3026] bg-white">
+                      <option value="Active">Active</option>
+                      <option value="Inactive">Inactive</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-3 pt-6 border-t border-gray-100">
+                  <button type="button" onClick={() => setIsEditOpen(false)} className="px-5 py-2.5 border border-gray-300 rounded-lg text-sm font-bold text-[#1a1a1a] hover:bg-gray-50 cursor-pointer">Cancel</button>
+                  <button type="submit" className="px-5 py-2.5 bg-[#0b3026] text-white rounded-lg text-sm font-bold hover:bg-[#08241d] cursor-pointer">Save Changes</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* --- CONFIRM DELETE POPUP --- */}
+        {deleteConfirm.isOpen && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 animate-in fade-in duration-200">
+            <div className="bg-white rounded-[20px] w-full max-w-[420px] overflow-hidden shadow-2xl">
+              <div className="bg-[#0b3026] px-7 py-5">
+                <h3 className="text-white text-xl font-bold tracking-tight">Confirm Deletion</h3>
+              </div>
+              <div className="p-7">
+                <p className="text-[#4a5568] text-base mb-8">
+                  Are you sure you want to delete the profile for <span className="font-bold text-[#1a1a1a]">{deleteConfirm.name}</span>?
+                </p>
+                <div className="flex justify-center gap-3">
+                  <button 
+                    onClick={() => setDeleteConfirm({ isOpen: false, id: "", name: "" })} 
+                    className="w-full py-2.5 border border-gray-300 rounded-lg text-sm font-bold text-[#1a1a1a] hover:bg-gray-50 cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    onClick={confirmDelete} 
+                    className="w-full py-2.5 bg-[#0b3026] text-white rounded-lg text-sm font-bold hover:bg-[#08241d] cursor-pointer"
+                  >
+                    Confirm
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
       </div>
     </div>
   );
 };
 
-export default ManageProfileMain;
+export default ManageAccountsMain;
